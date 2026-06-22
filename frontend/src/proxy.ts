@@ -88,8 +88,12 @@ export async function proxy(request: NextRequest) {
   }
 
   // --- 3. Protected Routes (require auth, only when Supabase is configured) ---
-  if (supabaseUrl && supabaseAnonKey) {
-    const protectedPaths = ['/dashboard', '/inventory', '/bounty-board', '/nexus', '/shopkeeper'];
+  // SKIP auth if demo mode is active (?demo=true or NEXT_PUBLIC_DEMO_MODE !== 'false')
+  const isDemoRequest = url.searchParams.get('demo') === 'true' ||
+    process.env.NEXT_PUBLIC_DEMO_MODE !== 'false';
+
+  if (supabaseUrl && supabaseAnonKey && !isDemoRequest) {
+    const protectedPaths = ['/dashboard', '/inventory', '/bounty-board', '/nexus', '/shopkeeper', '/analytics', '/profile', '/settings'];
     const isProtectedRoute = protectedPaths.some((path) =>
       url.pathname.startsWith(path)
     );
