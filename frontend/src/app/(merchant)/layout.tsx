@@ -28,6 +28,7 @@ const NAV_ITEMS = [
   { href: "/shopkeeper", label: "Shopkeeper AI", icon: "🤖", id: "shopkeeper" },
   { href: "/analytics", label: "Analytics", icon: "📊", id: "analytics" },
   { href: "/profile", label: "Profile", icon: "👤", id: "profile" },
+  { href: "/settings", label: "Settings", icon: "⚙️", id: "settings" },
 ];
 
 function getBreadcrumbs(pathname: string): Array<{ label: string; href: string }> {
