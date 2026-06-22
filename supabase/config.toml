@@ -1,16 +1,18 @@
-# ============================================================================
 # GUILDOS — Supabase Configuration
-# Isolated guildos_core schema for co-hosted free-tier database
-# ============================================================================
-
-[db]
-# Only expose guildos_core via PostgREST (plus auth for JWT)
-schemas = ["guildos_core", "public", "auth", "storage"]
+# Project ref: tyustwqwvjmzvuazfwkv (Aegis-OS-DB)
+# Schema: guildos_core (isolated from public)
 
 [api]
+enabled = true
+port = 54321
 schemas = ["guildos_core", "public", "auth", "storage"]
 extra_search_path = ["public", "extensions", "guildos_core"]
 max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 17
 
 [studio]
 port = 54323
@@ -22,6 +24,10 @@ port = 54324
 file_size_limit = "50MiB"
 
 [auth]
+enabled = true
 site_url = "http://localhost:3000"
-additional_redirect_urls = ["https://*.guildos.com", "http://*.localhost:3000"]
+additional_redirect_urls = ["https://*.guildos.com"]
 enable_signup = true
+
+[realtime]
+enabled = true

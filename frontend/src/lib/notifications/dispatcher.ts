@@ -30,7 +30,7 @@ export function dispatchNotification(payload: NotificationPayload): void {
     user_id: payload.userId ?? 'system',
     type: payload.type,
     title: payload.title,
-    message: payload.message ?? null,
+    message: payload.message ?? undefined,
     metadata: payload.metadata ?? {},
     created_at: new Date().toISOString(),
   };
@@ -152,7 +152,7 @@ export function createNotification(payload: NotificationPayload): Notification {
     user_id: payload.userId ?? 'system',
     type: payload.type,
     title: payload.title,
-    message: payload.message ?? null,
+    message: payload.message ?? undefined,
     metadata: payload.metadata ?? {},
     created_at: new Date().toISOString(),
   };

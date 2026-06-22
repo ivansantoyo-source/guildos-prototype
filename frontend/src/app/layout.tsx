@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import { JetBrains_Mono } from "next/font/google";
-import "./globals.css";
+import "./globals-v2.css";
 import { KonamiListener } from "@/components/konami/KonamiListener";
+import { CommandPalette } from "@/components/ui/command-palette";
+import { Toaster } from "@/components/ui/toaster";
+import { ErrorBoundary } from "@/components/error-boundary";
 
 const jetbrainsMono = JetBrains_Mono({
   variable: "--font-geist-mono",
@@ -9,7 +12,6 @@ const jetbrainsMono = JetBrains_Mono({
   weight: ["300", "400", "500", "600", "700", "800"],
 });
 
-// Use the same font for sans since GuildOS is terminal-themed
 const fontSans = JetBrains_Mono({
   variable: "--font-sans",
   subsets: ["latin"],
@@ -17,7 +19,10 @@ const fontSans = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "GuildOS — Retro Gaming Command Center",
+  title: {
+    default: "GuildOS — Retro Gaming Command Center",
+    template: "%s | GuildOS",
+  },
   description:
     "The multi-tenant SaaS platform that transforms retro-gaming storefronts into RPG-powered ecosystems. AI-driven inventory, gamified supply chains, and community-first design.",
   keywords: [
@@ -28,6 +33,21 @@ export const metadata: Metadata = {
     "RPG",
     "GuildOS",
   ],
+  openGraph: {
+    title: "GuildOS — Retro Gaming Command Center",
+    description:
+      "Turn your game store into an RPG empire. AI-powered inventory, gamified supply chains, faction wars, and an AI shopkeeper that never sleeps.",
+    siteName: "GuildOS",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "GuildOS — Retro Gaming Command Center",
+    description:
+      "Turn your game store into an RPG empire. AI-powered, gamified, community-first.",
+  },
+  manifest: "/manifest.json",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "https://guildos.com"),
 };
 
 export default function RootLayout({
@@ -41,8 +61,12 @@ export default function RootLayout({
       className={`${fontSans.variable} ${jetbrainsMono.variable} dark h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
-        <KonamiListener />
-        {children}
+        <ErrorBoundary>
+          <KonamiListener />
+          <CommandPalette />
+          <Toaster />
+          {children}
+        </ErrorBoundary>
       </body>
     </html>
   );

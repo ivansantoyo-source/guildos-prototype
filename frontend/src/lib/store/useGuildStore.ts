@@ -26,6 +26,8 @@ interface GuildState {
   sidebarCollapsed: boolean;
   activeModule: string;
   shopkeeperOpen: boolean;
+  soundEnabled: boolean;
+  reducedMotion: boolean;
 
   // --- Domain Data ---
   inventory: InventoryItem[];
@@ -49,15 +51,30 @@ interface GuildState {
   toggleSidebar: () => void;
   setActiveModule: (module: string) => void;
   toggleShopkeeper: () => void;
+  toggleSound: () => void;
+  setReducedMotion: (enabled: boolean) => void;
 
   // --- Actions: Data ---
   setInventory: (items: InventoryItem[]) => void;
   addInventoryItem: (item: InventoryItem) => void;
   updateInventoryItem: (id: string, updates: Partial<InventoryItem>) => void;
+  removeInventoryItem: (id: string) => void;
+  batchUpdateInventoryItems: (ids: string[], updates: Partial<InventoryItem>) => void;
   setBounties: (bounties: Bounty[]) => void;
+  addBounty: (bounty: Bounty) => void;
+  fulfillBounty: (id: string, fulfilled_by: string) => void;
+  removeBounty: (id: string) => void;
   setLfgLobbies: (lobbies: NexusLfg[]) => void;
+  addLfgLobby: (lobby: NexusLfg) => void;
+  joinLobby: (id: string) => void;
+  leaveLobby: (id: string) => void;
   setScoreboards: (scores: ScoreboardEntry[]) => void;
+  addScoreEntry: (entry: ScoreboardEntry) => void;
+  updateScoreEntry: (id: string, updates: Partial<ScoreboardEntry>) => void;
   setSaveRooms: (rooms: SaveRoom[]) => void;
+  bookRoom: (id: string, subscriber_id: string, qr_hash: string) => void;
+  releaseRoom: (id: string) => void;
+  addSaveRoom: (room: SaveRoom) => void;
   setFactionStandings: (standings: FactionStanding[]) => void;
   setNotifications: (notifications: Notification[]) => void;
   markNotificationRead: (id: string) => void;
@@ -87,6 +104,8 @@ export const useGuildStore = create<GuildState>()(
       sidebarCollapsed: false,
       activeModule: 'dashboard',
       shopkeeperOpen: false,
+      soundEnabled: true,
+      reducedMotion: false,
       inventory: [],
       bounties: [],
       lfgLobbies: [],
@@ -119,6 +138,9 @@ export const useGuildStore = create<GuildState>()(
       setActiveModule: (module) => set({ activeModule: module }),
       toggleShopkeeper: () =>
         set((state) => ({ shopkeeperOpen: !state.shopkeeperOpen })),
+      toggleSound: () =>
+        set((state) => ({ soundEnabled: !state.soundEnabled })),
+      setReducedMotion: (enabled) => set({ reducedMotion: enabled }),
 
       // --- Data Actions ---
       setInventory: (items) => set({ inventory: items }),
@@ -130,10 +152,78 @@ export const useGuildStore = create<GuildState>()(
             item.id === id ? { ...item, ...updates } : item
           ),
         })),
+      removeInventoryItem: (id) =>
+        set((state) => ({
+          inventory: state.inventory.filter((item) => item.id !== id),
+        })),
+      batchUpdateInventoryItems: (ids, updates) =>
+        set((state) => ({
+          inventory: state.inventory.map((item) =>
+            ids.includes(item.id) ? { ...item, ...updates } : item
+          ),
+        })),
       setBounties: (bounties) => set({ bounties }),
+      addBounty: (bounty) =>
+        set((state) => ({ bounties: [bounty, ...state.bounties] })),
+      fulfillBounty: (id, fulfilled_by) =>
+        set((state) => ({
+          bounties: state.bounties.map((b) =>
+            b.id === id
+              ? { ...b, status: 'FULFILLED' as const, fulfilled_by, fulfilled_at: new Date().toISOString() }
+              : b
+          ),
+        })),
+      removeBounty: (id) =>
+        set((state) => ({
+          bounties: state.bounties.filter((b) => b.id !== id),
+        })),
       setLfgLobbies: (lobbies) => set({ lfgLobbies: lobbies }),
+      addLfgLobby: (lobby) =>
+        set((state) => ({ lfgLobbies: [lobby, ...state.lfgLobbies] })),
+      joinLobby: (id) =>
+        set((state) => ({
+          lfgLobbies: state.lfgLobbies.map((l) =>
+            l.id === id
+              ? { ...l, player_slots_filled: Math.min(l.player_slots_filled + 1, l.player_slots_total) }
+              : l
+          ),
+        })),
+      leaveLobby: (id) =>
+        set((state) => ({
+          lfgLobbies: state.lfgLobbies.map((l) =>
+            l.id === id
+              ? { ...l, player_slots_filled: Math.max(l.player_slots_filled - 1, 0) }
+              : l
+          ),
+        })),
       setScoreboards: (scores) => set({ scoreboards: scores }),
+      addScoreEntry: (entry) =>
+        set((state) => ({ scoreboards: [...state.scoreboards, entry] })),
+      updateScoreEntry: (id, updates) =>
+        set((state) => ({
+          scoreboards: state.scoreboards.map((s) =>
+            s.id === id ? { ...s, ...updates } : s
+          ),
+        })),
       setSaveRooms: (rooms) => set({ saveRooms: rooms }),
+      bookRoom: (id, subscriber_id, qr_hash) =>
+        set((state) => ({
+          saveRooms: state.saveRooms.map((r) =>
+            r.id === id
+              ? { ...r, status: 'RESERVED' as const, subscriber_id, qr_code_hash: qr_hash }
+              : r
+          ),
+        })),
+      releaseRoom: (id) =>
+        set((state) => ({
+          saveRooms: state.saveRooms.map((r) =>
+            r.id === id
+              ? { ...r, status: 'AVAILABLE' as const, subscriber_id: undefined, qr_code_hash: undefined }
+              : r
+          ),
+        })),
+      addSaveRoom: (room) =>
+        set((state) => ({ saveRooms: [...state.saveRooms, room] })),
       setFactionStandings: (standings) => set({ factionStandings: standings }),
       setNotifications: (notifications) => set({ notifications }),
       markNotificationRead: (id) =>
@@ -156,6 +246,9 @@ export const useGuildStore = create<GuildState>()(
         demoMode: state.demoMode,
         sidebarCollapsed: state.sidebarCollapsed,
         activeModule: state.activeModule,
+        soundEnabled: state.soundEnabled,
+        reducedMotion: state.reducedMotion,
+        shopkeeperMessages: state.shopkeeperMessages,
       }),
     }
   )

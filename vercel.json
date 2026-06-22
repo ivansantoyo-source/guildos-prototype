@@ -7,5 +7,23 @@
   "regions": ["iad1"],
   "env": {
     "NEXT_PUBLIC_DEMO_MODE": "true"
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/price-sync",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/oracle",
+      "schedule": "0 */2 * * *"
+    },
+    {
+      "path": "/api/b2b/arbitrage",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/faction-war",
+      "schedule": "59 23 28-31 * *"
+    }
+  ]
 }
