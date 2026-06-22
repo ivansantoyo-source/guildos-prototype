@@ -1,69 +1,87 @@
 # GuildOS — Project State
 
-> **Last updated:** 2026-06-22  
-> **Version:** v1.0.0-alpha  
-> **Build:** Phase 1 (Alpha Server) — Complete
+> **Last updated:** 2026-06-22
+> **Version:** v2.0.0
+> **Status:** ✅ Production Deployed on Vercel + Aegis Supabase
 
 ---
 
-## Current Build Status: ✅ Phase 1 Complete
+## Current Build: v2.0 Complete ✅
 
-### Implemented ✅
+| Module | Status | Details |
+|--------|--------|---------|
+| **Database** | ✅ | 13 tables in `guildos_core` on Aegis Supabase — 86 Aegis tables untouched |
+| **RLS + Triggers** | ✅ | Full tenant isolation, legendary flagging, level tier calculation |
+| **Landing Page** | ✅ | Hero, features, faction tease, pricing, FAQ accordion |
+| **Login/Auth** | ✅ | Email/password, faction selection, forgot password flow, OAuth buttons, demo quick-access |
+| **Dashboard** | ✅ | Date filters, revenue sparkline, quick actions, alerts, upcoming LFGs |
+| **Inventory** | ✅ | Grid/list, batch ops, scan modal with drag-drop, scrap yard, CSV export, inline editing |
+| **Bounty Board** | ✅ | 3-step creation wizard, fulfillment workflow, auto-suggest prices, share, sort |
+| **The Nexus (LFG)** | ✅ | Create/join, lobby chat, participant slots, reminders, filters |
+| **The Nexus (Scores)** | ✅ | Log scores, cabinets management, dethroned animation, historical toggle |
+| **The Nexus (Save Rooms)** | ✅ | Booking flow, QR code generation, amenity filters, subscription management |
+| **AI Shopkeeper** | ✅ | Voice input, markdown rendering, rich follow-ups, conversation history, typing indicator |
+| **Analytics** | ✅ | KPI cards, platform distribution, condition breakdown, faction mix, activity log |
+| **Profile** | ✅ | XP bar, achievement badges (8), purchase history, edit form, danger zone |
+| **Settings (BYO Keys)** | ✅ | 3 tabs: API Keys (Stripe/Twilio/AI/IoT), Store Info, Feature Toggles |
+| **Command Palette** | ✅ | ⌘K global search across navigation, inventory, bounties, quick actions |
+| **Toast System** | ✅ | 5 types (success/error/warning/info/legendary) with auto-dismiss and progress bar |
+| **Confetti Engine** | ✅ | Canvas-based particles with 7 color palettes and physics |
+| **Level-Up Effect** | ✅ | Full-screen overlay with XP orb particles and perks display |
+| **Legendary Drop** | ✅ | Golden rays, floating dust, typewriter text, IoT trigger simulation |
+| **Faction War Tracker** | ✅ | Live animated bars, crown indicator, countdown timer |
+| **Live Ticker** | ✅ | Horizontal infinite scroll with color-coded events |
+| **Achievement Toasts** | ✅ | Queue-based, 4 rarity tiers with synthesized chimes |
+| **XP Bar** | ✅ | Animated counter with cubic ease-out and glow pulse |
+| **Konami Code 2.0** | ✅ | 6 cheat codes (Konami, IDDQD, IDKFA, NES, GB, SNES) with unique effects |
+| **Mobile Responsive** | ✅ | Bottom tab nav, responsive tables → cards, safe-area padding |
+| **SEO** | ✅ | robots.txt, sitemap.xml, OpenGraph, Twitter Cards, PWA manifest |
+| **Sound Design** | ✅ | 7 Web Audio API synthesized sounds (no external files) |
+| **Page Transitions** | ✅ | Framer Motion AnimatePresence with staggered children |
+| **Error Boundary** | ✅ | React error boundary with retry and dev stack traces |
+| **Skeleton Loaders** | ✅ | 5 variants: stat card, table row, card, chat bubble, chart |
+| **Empty States** | ✅ | 7 domain-specific variants with CTAs |
+| **Confirm Dialog** | ✅ | Glass modal with focus trap, keyboard nav, destructive variant |
+| **Vercel Cron Jobs** | ✅ | 4 daily: price sync, Oracle, B2B arbitrage, faction war |
+| **Stripe Webhook** | ✅ | Endpoint ready at `/api/webhooks/stripe` |
+| **Demo Mode** | ✅ | URL param > localStorage > env var priority chain |
+| **BYO Key System** | ✅ | Per-tenant key management via `/settings` + `organizations.config` JSONB |
+| **Vercel Env Vars** | ✅ | All 6 production env vars set and encrypted |
+| **Documentation** | ✅ | ARCHITECTURE.md, STATE.md, HANDOVER.md, .env.example |
 
-| Module | Status | Notes |
-|--------|--------|-------|
-| **Database Schema** | ✅ Complete | 13 tables in `guildos_core` schema with full RLS + triggers |
-| **Multi-Tenant Routing** | ✅ Complete | proxy.ts handles subdomain/tenant resolution |
-| **Dashboard (RPG Admin)** | ✅ Complete | 6-widget dashboard with faction war chart + activity feed |
-| **Inventory Matrix** | ✅ Complete | Full CRUD with platform/condition filters, legendary glow, scrap yard |
-| **Bounty Board** | ✅ Complete | Active/fulfilled tabs, bounty form, store credit calculator |
-| **The Nexus (LFG)** | ✅ Complete | LFG board with lobby cards, join/create, player slot tracking |
-| **The Nexus (Scores)** | ✅ Complete | Ghost Data leaderboard grouped by cabinet, ranked table |
-| **The Nexus (Save Rooms)** | ✅ Complete | Room cards with amenities, status, monthly rate, reserve CTA |
-| **AI Shopkeeper** | ✅ Complete | DeepSeek-V3 via NVIDIA NIM + rich mock fallback with 8 keyword patterns |
-| **Oracle Engine** | ✅ Complete | Predictive tag matching API + cron job, demo mode with phantom data |
-| **Konami Code** | ✅ Complete | ↑↑↓↓←→←→BA triggers neon flash + 1UP-XXXXXX discount + API recording |
-| **Demo Mode** | ✅ Complete | Full phantom dataset (10 inventory, 4 bounties, 5 scores, 3 LFGs, 3 rooms, 3 profiles) |
-| **Landing Page** | ✅ Complete | Hero, features, faction teaser, pricing tiers |
-| **Login Page** | ✅ Complete | Email/password, faction selection, demo mode quick access |
-| **Discount Codes API** | ✅ Complete | CRUD with Konami/faction/promotion sources |
-| **IoT Webhook System** | ✅ Complete | Grail drop → light pulse + audio trigger (simulated in demo) |
-| **Notification Dispatch** | ✅ Complete | 10 notification types with special handlers |
-| **Backend Cron Jobs** | ✅ Complete | Price sync, faction war, B2B arbitrage, oracle engine (all with demo responses) |
-| **External Integration Skels** | ✅ Complete | PriceCharting, Twilio, Stripe — all with demo/mock fallback |
-| **Documentation** | ✅ Complete | ARCHITECTURE.md, STATE.md, HANDOVER.md, PRD reference |
+---
 
-### Known Issues / Limitations
+## Deployment Status
+
+| Service | URL / ID | Status |
+|---------|----------|--------|
+| **Vercel (prod)** | https://guildos-flax.vercel.app | ✅ Live — 33 pages, 22 API routes |
+| **Supabase** | Aegis-OS-DB (`tyustwqwvjmzvuazfwkv`) | ✅ Connected — `guildos_core` schema active |
+| **GitHub** | ivansantoyo-source/guildos-prototype | ✅ main branch — all code pushed |
+| **Cron Jobs** | 4 Vercel cron jobs configured | ✅ Pending first execution |
+
+---
+
+## Known Issues & Gaps
 
 | Issue | Severity | Notes |
 |-------|----------|-------|
-| Supabase not connected | Low | Demo mode works fully offline — no database required |
-| No real auth flow | Low | Login currently bypasses Supabase; production needs Supabase Auth setup |
-| Backend not deployed | Low | FastAPI cron jobs are local-only; prod needs Render/railway deployment |
-| No e2e tests | Medium | Manual testing only; Cypress/Playwright recommended for Phase 2 |
-| Mobile not optimized | Medium | Pages are responsive but need mobile-specific QA pass |
-| TypeScript strict errors | Low | Some API routes use `any` for demo data; strict mode cleanup pending |
-
-### Next Phase Priorities
-
-1. **Phase 2a (Week 3-4):** Deploy to Vercel → Run migration → Connect Supabase → Real auth
-2. **Phase 2b (Week 5-6):** PriceCharting API live integration → Stripe billing → Twilio SMS
-3. **Phase 2c (Week 7-8):** Real-time subscriptions (Supabase Realtime) → Mobile portal → IoT live testing
-4. **Phase 3 (Week 9+):** Custom domains → B2B network → Production hardening
+| No real Supabase Auth users | Medium | Login works in demo; production needs real auth flow testing |
+| No Stripe live test | Medium | BYO keys configured but no test transaction run |
+| No Twilio live test | Medium | SMS integration not end-to-end tested |
+| No e2e tests | Medium | Manual testing only; recommend Playwright for critical paths |
+| No real-time Supabase | Low | `useRealtime` hook simulates in demo; needs Supabase Realtime enabled |
+| Voice input browser support | Low | Web Speech API works in Chrome/Edge, not Firefox/Safari |
+| KonamiListener SSR | Low | `triggerConfetti` import may fail in SSR — handled by "use client" |
+| Framer Motion bundle size | Low | Tree-shaking enabled; consider dynamic import for effects |
 
 ---
 
-## Deployment Checklist
+## Next Phase: Real Merchant Onboarding
 
-- [ ] Set up Supabase project with `guildos_core` schema migration
-- [ ] Configure all env vars in Vercel dashboard (see .env.example)
-- [ ] Deploy frontend via `vercel --prod` from `frontend/` directory
-- [ ] Deploy backend to Render/Railway (or defer — cron jobs can be Vercel Cron)
-- [ ] Set up Stripe products (merchant=$99, wizard=$249, time_lord=$499)
-- [ ] Configure Twilio phone number for SMS alerts
-- [ ] Register PriceCharting API key
-- [ ] Set up NVIDIA NIM API key for DeepSeek AI (or keep mock fallback)
-- [ ] Switch NEXT_PUBLIC_DEMO_MODE from "true" to "false"
-- [ ] Run `bash scripts/generate-types.sh` to get live DB types
-- [ ] Configure Vercel Cron Jobs for: price-sync (daily 04:00), b2b-arbitrage (daily), oracle (every 2h)
-- [ ] Set up Supabase Realtime for live dashboard updates
+1. Test real Supabase Auth (sign up → email verify → faction select → dashboard)
+2. Configure a test Stripe account and process a test subscription
+3. Configure a test Twilio account and send a test SMS
+4. Write Playwright e2e tests for critical paths (login → dashboard → scan item → post bounty)
+5. Add real-time Supabase Realtime subscriptions for live dashboard updates
+6. Custom domain setup for tenant subdomains
