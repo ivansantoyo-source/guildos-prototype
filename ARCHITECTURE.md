@@ -1,272 +1,234 @@
-# GuildOS → Retro-Gaming Multi-Tenant Platform: Complete Architectural Blueprint
+# GuildOS v1.0.0 — System Architecture
 
-> **Purpose**: This document is the complete architectural blueprint of the **GuildOS** platform — a production-grade, AI-agentic multi-tenant SaaS for brick-and-mortar retro-gaming storefronts. It serves as the authoritative reference for building the application.
-
----
-
-## Table of Contents
-
-1. [Executive Summary](#1-executive-summary)
-2. [Technology Stack (Exact Versions)](#2-technology-stack)
-3. [Repository Structure](#3-repository-structure)
-4. [Architecture Overview](#4-architecture-overview)
-5. [Database Layer (Supabase + PostgreSQL)](#5-database-layer)
-6. [Backend Architecture (Next.js Edge APIs)](#6-backend-architecture)
-7. [Frontend Architecture (Next.js App Router)](#7-frontend-architecture)
-8. [AI / LLM Integration Engine](#8-ai--llm-integration)
-9. [Physical & IoT Integration Architecture](#9-physical--iot-integrations)
-10. [Domain Data Models & Real-World Mechanics](#10-domain-data-models)
+> **Multi-tenant retro-gaming SaaS platform** transforming brick-and-mortar game stores into AI-powered, RPG-gamified ecosystems.
 
 ---
 
-## 1. Executive Summary
+## Stack Overview
 
-GuildOS is an **enterprise-grade, multi-tenant Software-as-a-Service (SaaS) platform** engineered as a distributed, real-time ecosystem for retro-gaming storefronts.
-
-Every physical storefront represents an isolated tenant instance, while a shared global network enables inter-store data aggregation and cross-play mechanics. 
-
-### Core Features
-- **Multi-tenancy:** PostgreSQL RLS using JWT `tenant_id` claims, ensuring data isolation at the DB engine level. Subdomain-based dynamic routing handling `*.guildos.com`.
-- **AI Vision Ingest ("Loot Scanner"):** Mobile-first camera upload utility with OCR and PriceCharting API integration for automated inventory pricing.
-- **Behavioral Mechanics ("The Bounty Board"):** Community-sourced supply chain via gamified quests and faction systems (Sega Syndicate, Nintendo Nomads).
-- **Physical Space Monetization ("The Nexus"):** Peer-to-peer LFG boards, physical space rental integrations (Stripe), and encrypted QR access.
-- **Agentic Conversational Engine ("Synthetic Shopkeeper"):** DeepSeek-V3 LLM orchestrated to act as an encyclopedic retro-gaming clerk capable of predictive logic ("The Oracle").
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| **Frontend** | Next.js 16 (App Router, Turbopack) | SSR/SSG pages, BFF API routes |
+| **State** | Zustand 5 (persist middleware) | Client-side state with demo mode |
+| **Styling** | Tailwind CSS 4 + shadcn/ui | Retro-gaming terminal dark theme |
+| **Auth** | Supabase Auth (JWT + RLS) | Multi-tenant user sessions |
+| **Database** | Supabase PostgreSQL | 13 tables in isolated `guildos_core` schema, full RLS, triggers |
+| **AI** | NVIDIA NIM (DeepSeek-V3) | Synthetic Shopkeeper, The Oracle |
+| **Backend** | FastAPI (Phase 2) | Cron jobs, pricing sync, B2B engine |
+| **IoT** | Make/Zapier Webhooks | In-store smart device triggers |
 
 ---
 
-## 2. Technology Stack
+## Multi-Tenant Architecture
 
-### Frontend & Backend (Monolithic Serverless)
 ```
-Framework:        Next.js 16 (App Router)
-Language:         TypeScript
-Deployment:       Vercel (Edge Functions + Middleware)
-State Management: Zustand
-UI Library:       shadcn/ui + Tailwind CSS (Custom thematic skinning)
-```
-
-### Database & Infrastructure
-```
-Database:         Supabase (PostgreSQL 15+)
-Auth:             Supabase Auth (JWT)
-Storage:          Supabase Storage (Buckets for Vision Integrator images)
-```
-
-### AI & Third-Party Integrations
-```
-AI Engine:        DeepSeek-V3 (via NVIDIA NIM API)
-Market Data:      PriceCharting API (Secondary market pricing)
-Payments:         Stripe Billing (Nexus sub/recurring billing)
-Communications:   Twilio (SMS notifications, Geo-fenced alerts)
-IoT / Hardware:   Make/Zapier Webhooks → Govee / Philips Hue Smart LEDs
+Request Flow:
+┌──────────────────────────────────────────────────────┐
+│ Browser: timewarp.guildos.com/dashboard              │
+└──────────────┬───────────────────────────────────────┘
+               ▼
+┌──────────────────────────────────────────────────────┐
+│ proxy.ts (Next.js 16 Proxy)                          │
+│ 1. Supabase session refresh                          │
+│ 2. Subdomain → tenant resolution                     │
+│ 3. Inject x-tenant-subdomain header                  │
+│ 4. Rewrite to /[tenant]/... routes                   │
+│ 5. Auth gate for protected routes                    │
+└──────────────┬───────────────────────────────────────┘
+               ▼
+┌──────────────────────────────────────────────────────┐
+│ App Router                                           │
+│ ├─ / .......................... Landing page          │
+│ ├─ /login .................... Auth (faction select)  │
+│ ├─ /dashboard ................ RPG Admin Console      │
+│ ├─ /inventory ................ Loot Scanner Matrix    │
+│ ├─ /bounty-board ............. Quest Board            │
+│ ├─ /nexus .................... LFG + Scores + Rooms   │
+│ ├─ /shopkeeper ............... AI Chat Interface      │
+│ ├─ /[tenant]/dashboard ....... Subdomain tenant view  │
+│ └─ /api/... .................. 8 API route handlers   │
+└──────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 3. Repository Structure
+## Database Schema (13 Tables — `guildos_core`)
 
-```
-guildos/
-├── src/
-│   ├── app/
-│   │   ├── [tenant]/                  # Tenant resolution catch-all
-│   │   │   ├── dashboard/page.tsx     # Merchant RPG Dashboard
-│   │   │   ├── bounties/page.tsx      # Public Quest Board
-│   │   │   ├── nexus/page.tsx         # LFG Matchmaker & Scoreboards
-│   │   ├── api/
-│   │   │   ├── ai/shopkeeper/route.ts # Next.js Edge route for DeepSeek-V3
-│   │   │   ├── iot/trigger/route.ts   # Webhook triggers for Govee/Philips Hue
-│   │   │   ├── vision/appraise/route.ts # Cloud function for image OCR + Pricing
-│   │   ├── layout.tsx
-│   │   └── globals.css                # Custom retro-thematic CSS variables
-│   ├── components/
-│   │   ├── dashboard/                 # "Gold Farmed", "Loot Depleted" widgets
-│   │   ├── gamification/              # Faction banners, XP trackers
-│   │   ├── konami/                    # Client-side DOM keyboard event listener
-│   │   └── ui/                        # shadcn components
-│   ├── lib/
-│   │   ├── supabase/                  # Supabase clients (Server & Browser)
-│   │   ├── pricecharting.ts           # PriceCharting API wrapper
-│   │   ├── nvidianim.ts               # DeepSeek-V3 wrapper
-│   │   └── twilio.ts                  # SMS Broadcast utilities
-│   ├── middleware.ts                  # Subdomain routing & JWT validation
-│   └── tailwind.config.ts
-└── schema.sql                         # PostgreSQL schema with RLS
-```
+**Schema Isolation Strategy:** This project shares a free-tier Supabase database with another application. All GuildOS tables live in a dedicated `guildos_core` PostgreSQL schema — NEVER in `public`. The search_path is configured as `guildos_core, public, auth` for all roles (authenticated, anon, service_role). This ensures zero collision with other applications on the same database.
 
----
+All tables enforce `ENABLE ROW LEVEL SECURITY` with tenant isolation via `current_user_org_id()`. The function reads `auth.jwt() -> 'app_metadata' ->> 'organization_id'`.
 
-## 4. Architecture Overview
+### Core
+| Table | Purpose | RLS Policy |
+|-------|---------|------------|
+| `organizations` | Tenant/storefront records | Own-org read |
+| `profiles` | Gamified user accounts (faction, XP, level tier) | Own-org read, self-update |
 
-### Tenant Isolation & Subdomain Routing
+### Inventory Module
+| Table | Purpose | RLS Policy |
+|-------|---------|------------|
+| `inventory` | Physical stock (platform, condition, market value) | Full tenant isolation |
+| `price_history` | Historical market value tracking | Full tenant isolation |
 
-```mermaid
-graph TB
-    subgraph "Vercel Edge Network"
-        MW["Vercel Middleware<br/>(middleware.ts)"]
-        ROUTER["Next.js App Router<br/>(app/[tenant]/...)"]
-    end
+### Bounty Board Module
+| Table | Purpose | RLS Policy |
+|-------|---------|------------|
+| `bounties` | Community supply chain quests | Tenant isolation + public read (active) |
 
-    subgraph "Supabase Data Plane"
-        DB["PostgreSQL DB<br/>(RLS Enforced)"]
-    end
+### Nexus Module
+| Table | Purpose | RLS Policy |
+|-------|---------|------------|
+| `nexus_lfgs` | Looking For Group lobbies | Full tenant isolation |
+| `nexus_lfg_participants` | Lobby membership junction | Via LFG ownership |
+| `nexus_scoreboards` | Ghost Data arcade leaderboards | Tenant isolation + public read |
+| `nexus_save_rooms` | Physical space rental subscriptions | Full tenant isolation |
 
-    CLIENT["Browser (*.guildos.com)"] --> MW
-    MW -->|Extract Host Header| ROUTER
-    MW -->|Rewrite URL| ROUTER
-    ROUTER -->|Query with tenant_id| DB
-```
+### Gamification
+| Table | Purpose | RLS Policy |
+|-------|---------|------------|
+| `faction_standings` | Monthly faction war tracking | Full tenant isolation |
+| `discount_codes` | Konami Code + promotion codes | Full tenant isolation |
 
-1. **Routing Engine:** The middleware dynamically handles wildcard subdomains `*.guildos.com` and maps apex domains via Vercel's Domain API.
-2. **Tenant Resolution:** The host header is extracted, checked against the tenant cache, and the internal URL is seamlessly rewritten to `app/[tenant]/...`.
+### Security & System
+| Table | Purpose | RLS Policy |
+|-------|---------|------------|
+| `blacklist_entries` | Zero-knowledge fraud ledger | Cross-tenant read, own-tenant write |
+| `notifications` | In-app notification queue | Own-user read |
+
+### Triggers
+- `trg_inventory_legendary`: Auto-flags items with `market_value >= 150` as legendary
+- `trg_profiles_level_tier`: Auto-calculates tier (PEASANT → RETRO_MAGE → TIME_LORD) from XP
+- `trg_*_updated_at`: Auto-updates timestamps on all core tables
 
 ---
 
-## 5. Database Layer
+## API Routes
 
-### Core Design Principles
-1. **Multi-Tenancy:** Every table has a `tenant_id` column.
-2. **RLS Enforcement:** `ENABLE ROW LEVEL SECURITY` on all tables, filtering rows using `(auth.jwt() ->> 'tenant_id')`.
+| Endpoint | Methods | Auth | Purpose |
+|----------|---------|------|---------|
+| `/api/ai/shopkeeper` | POST | Yes | DeepSeek-V3 AI chat (NVIDIA NIM + mock fallback) |
+| `/api/inventory` | GET, POST | Yes | Inventory CRUD with filters |
+| `/api/bounties` | GET, POST | Mixed | Bounty management (public GET for active) |
+| `/api/nexus/lfg` | GET, POST | Yes | LFG lobby management |
+| `/api/nexus/scores` | GET, POST | Yes | Scoreboard entries |
+| `/api/vision/appraise` | POST | Yes | Image scan + market appraisal |
+| `/api/iot/trigger` | POST | Yes | Smart device webhook trigger |
+| `/api/b2b/arbitrage` | GET | Cron | Cross-tenant inventory matching |
+| `/api/security/blacklist` | POST | Yes | Fraud report broadcasting |
+| `/auth/callback` | GET | No | Supabase auth code exchange |
 
-### Schema Map
+---
 
-```sql
--- TENANTS (Stores)
-CREATE TABLE tenants (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    company_name VARCHAR(255) NOT NULL,
-    subdomain VARCHAR(63) UNIQUE NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
+## State Management (Zustand)
 
--- INVENTORY (Physical Stock)
-CREATE TABLE inventory (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id UUID REFERENCES tenants(id),
-    item_name VARCHAR(255) NOT NULL,
-    market_value NUMERIC(10,2) NOT NULL,
-    condition VARCHAR(50) NOT NULL,
-    stock_count INTEGER DEFAULT 1,
-    status VARCHAR(50) DEFAULT 'ACTIVE' -- ACTIVE, SCRAP, etc.
-);
-
-ALTER TABLE inventory ENABLE ROW LEVEL SECURITY;
-CREATE POLICY tenant_isolation_policy ON inventory
-    FOR ALL
-    USING (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid)
-    WITH CHECK (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
-
--- PROFILES (Gamified User Accounts)
-CREATE TABLE profiles (
-    id UUID PRIMARY KEY REFERENCES auth.users(id),
-    tenant_id UUID REFERENCES tenants(id),
-    display_name VARCHAR(100) NOT NULL,
-    faction VARCHAR(50) CHECK (faction IN ('Sega Syndicate', 'Nintendo Nomads', 'Sony Sentinels')),
-    xp_points INTEGER DEFAULT 0
-);
-
--- BOUNTIES (Community Supply Chain)
-CREATE TABLE bounties (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id UUID REFERENCES tenants(id),
-    target_item_name VARCHAR(255) NOT NULL,
-    scarcity_mult NUMERIC(3,2) DEFAULT 1.00
-);
-
--- NEXUS LFG (Space Monetization)
-CREATE TABLE nexus_lfgs (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id UUID REFERENCES tenants(id),
-    creator_id UUID REFERENCES profiles(id),
-    lobby_status VARCHAR(50) DEFAULT 'open',
-    game_title VARCHAR(255),
-    player_slots_total INTEGER,
-    player_slots_filled INTEGER DEFAULT 1,
-    start_time TIMESTAMPTZ
-);
+```
+useGuildStore
+├── Auth: tenant, user, isAuthenticated, demoMode
+├── UI: sidebarCollapsed, activeModule, shopkeeperOpen
+├── Data: inventory[], bounties[], lfgLobbies[], scoreboards[],
+│         factionStandings[], notifications[], dashboardStats,
+│         activityFeed[], shopkeeperMessages[]
+└── Persist: demoMode, sidebarCollapsed, activeModule (localStorage)
 ```
 
----
-
-## 6. Backend Architecture (Next.js Edge APIs)
-
-Because GuildOS is built on the Next.js App Router, the backend logic resides primarily in API routes (`app/api/`) running on Vercel's Edge/Serverless environments.
-
-### Core Workflows
-1. **The Auto-Appraiser Engine**: Triggered when a new image hits the Supabase bucket. Extracts metadata, uses OCR to identify the title, fetches real-time value from PriceCharting, and inserts the item into `inventory`.
-2. **The Oracle Predictive Logic (Cron Job)**: Matches incoming trade-ins (e.g., "Chrono Cross") against customer purchase vectors (e.g., users with `JRPG` tags). Sends SMS via Twilio if there is a match.
-3. **Dynamic Algorithmic Pricing (Cron Job)**: Runs daily at 04:00 UTC. Flags inventory items matching secondary market API spikes ($\ge 15\%$).
+**Demo Mode**: When `demoMode: true`, the merchant layout auto-loads phantom data from `mocks/phantomData.ts` — 10 inventory items, 4 bounties, 5 scores, 3 LFG lobbies, 3 faction standings, and 6 activity events. No Supabase connection required.
 
 ---
 
-## 7. Frontend Architecture (Next.js App Router)
+## Gamification Engine
 
-### UI / UX Paradigm
-GuildOS fundamentally replaces standard e-commerce taxonomy with RPG mechanics:
-- "Gross Revenue" $\rightarrow$ **Gold Farmed**
-- "High-Value Inventory" $\rightarrow$ **Legendary Item Acquired**
-- "Out of Stock" $\rightarrow$ **Loot Depleted**
+### Faction Wars
+- 3 factions: `SEGA_SYNDICATE`, `NINTENDO_NOMADS`, `SONY_SENTINELS`
+- Every customer dollar fuels their faction's monthly total
+- Winning faction gets 10% discount flag for the following month
+- Dashboard shows live faction war chart
 
-### The Konami Code Viral Architecture
-An easter-egg event listener sits at the layout root.
+### Player Leveling
+| Tier | XP Threshold | Unlocks |
+|------|-------------|---------|
+| PEASANT | 0 | Basic store access |
+| RETRO_MAGE | 5,000 | Priority bounty access |
+| TIME_LORD | 25,000 | B2B network visibility |
 
-```javascript
-// Konami Code Event Pattern
-const konamiSequence = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'];
-let inputBuffer = [];
+### Konami Code
+`↑↑↓↓←→←→BA` triggers:
+- Dynamic single-use discount code (`1UP-XXXXXX`)
+- Full-screen neon green CRT flash
+- 10% off next trade-in, 24-hour expiry
 
-window.addEventListener('keydown', (e) => {
-  inputBuffer.push(e.key);
-  inputBuffer = inputBuffer.slice(-konamiSequence.length);
-  if (JSON.stringify(inputBuffer) === JSON.stringify(konamiSequence)) {
-    triggerSecretCheatMode(); // Flashes screen neon green, injects 10% discount code
-  }
-});
+---
+
+## Security Model
+
+1. **Database Layer**: PostgreSQL RLS on every table using `current_user_org_id()` JWT claim
+2. **Proxy Layer**: `proxy.ts` guards all `/dashboard`, `/inventory`, `/bounty-board`, `/nexus`, `/shopkeeper` routes
+3. **API Layer**: Route handlers validate auth via Supabase JWT
+4. **Cross-Tenant**: Only `blacklist_entries` allows cross-tenant reads. `B2B arbitrage` uses service role key (bypasses RLS)
+5. **Headers**: X-Frame-Options: DENY, X-Content-Type-Options: nosniff, Referrer-Policy: strict-origin
+
+---
+
+## File Structure
+
+```
+GuildOS/
+├── schema.sql                          # 13 tables, RLS, triggers
+├── frontend/
+│   ├── next.config.ts                  # Security headers, image patterns
+│   ├── src/
+│   │   ├── proxy.ts                    # Next.js 16 proxy (subdomain routing)
+│   │   ├── app/
+│   │   │   ├── layout.tsx              # Root: JetBrains Mono, dark mode
+│   │   │   ├── globals.css             # Retro theme, animations, CRT effects
+│   │   │   ├── page.tsx                # Landing page
+│   │   │   ├── login/page.tsx          # Auth with faction selection
+│   │   │   ├── auth/callback/route.ts  # Supabase code exchange
+│   │   │   ├── (merchant)/
+│   │   │   │   ├── layout.tsx          # GuildShell (sidebar, header, nav)
+│   │   │   │   ├── dashboard/page.tsx  # 6-widget RPG dashboard
+│   │   │   │   ├── inventory/page.tsx  # Loot Scanner Matrix
+│   │   │   │   ├── bounty-board/page.tsx # Quest Board
+│   │   │   │   ├── nexus/page.tsx      # LFG + Scores + Rooms
+│   │   │   │   └── shopkeeper/page.tsx # AI chat interface
+│   │   │   ├── [tenant]/              # Subdomain-routed views
+│   │   │   └── api/                   # 8 API route handlers
+│   │   ├── lib/
+│   │   │   ├── types/index.ts         # 25+ TypeScript interfaces
+│   │   │   ├── store/useGuildStore.ts  # Zustand state management
+│   │   │   ├── api/client.ts          # guildFetch() canonical client
+│   │   │   └── supabase/client.ts     # Browser Supabase client
+│   │   ├── mocks/phantomData.ts       # Demo mode dataset
+│   │   └── components/
+│   │       └── konami/KonamiListener.tsx
+│   └── package.json
+├── backend/                            # FastAPI (Phase 2)
+└── supabase/                           # Supabase config
 ```
 
 ---
 
-## 8. AI / LLM Integration Engine
+## Environment Variables
 
-**The Synthetic Shopkeeper:**
-- **Model:** DeepSeek-V3 via NVIDIA NIM API.
-- **Orchestration Layer:** Client queries route through a protected Next.js edge route.
-- **Context Injection:** The system securely pulls a minified text-matrix of the store's real-time inventory and injects it into the prompt.
+```bash
+# Required
+NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+SUPABASE_SERVICE_ROLE_KEY=eyJ...          # Server-side only
 
-**System Prompt Snippet:**
-> "You are an automated, highly advanced retro-gaming clerk running inside GuildOS... You must analyze the provided JSON inventory payload. If asked about stock, query the payload. If an item is absent, check external market patterns to recommend a trade-in bounty value. Never hallucinate store availability."
+# Optional (enables real AI)
+NVIDIA_NIM_API_KEY=nvapi-...
 
----
-
-## 9. Physical & IoT Integrations
-
-GuildOS bridges the digital/physical gap through Webhooks and localized IoT arrays.
-
-### "Grail" Item Detection Workflow
-When a scanned item has a market value $\ge \$150.00$, the ingest engine hits a webhook:
-```json
-{
-  "event": "loot_drop_legendary",
-  "tenant_id": "tenant_time_warp_01",
-  "item_name": "EarthBound (SNES)",
-  "market_value": 350.00,
-  "action_payload": {
-    "light_hex": "#FFD700",
-    "light_pulse_ms": 3000,
-    "audio_url": "https://cdn.guildos.com/assets/sfx/legendary_drop.mp3"
-  }
-}
+# Optional (cron/security)
+CRON_SECRET=your-cron-secret
+BLACKLIST_VERIFICATION_KEY=your-key
 ```
-*Triggers Make/Zapier $\rightarrow$ Philips Hue / Govee LEDs & Smart Speakers in the actual storefront.*
 
 ---
 
-## 10. Cross-Play Network (Inter-Store Ecosystem)
+## Phase Roadmap
 
-### Inter-Guild Trade Routes (B2B)
-- **Logic:** If an item sits unfulfilled on a Bounty Board for $> 14 \text{ days}$, the system looks across the `inventory` tables of *other* tenants where `stock_count >= 3`. 
-- **Action:** Triggers an automated B2B wholesale transaction proposal.
-
-### The Global Blacklist Security Layer
-- **Logic:** Zero-knowledge threat mitigation. Stores log fraudulent/stolen hardware with hashed ID metadata. 
-- **Action:** If a scammer attempts a trade-in at another tenant within a 100-mile radius, the backend flashes a high-priority warning to the Synthetic Shopkeeper terminal of that localized store.
+| Phase | Scope | Status |
+|-------|-------|--------|
+| **Phase 1**: Alpha Server (Days 1–14) | Dashboard, Inventory, Bounties, Nexus, AI Chat, Schema, Demo Mode, Backend Cron, Integrations | ✅ Complete (2026-06-22) |
+| **Phase 2**: Beta (Days 15–30) | Stripe billing, PriceCharting API live, real-time subscriptions, Supabase migration, FastAPI deployment | 🔜 Next |
+| **Phase 3**: Launch (Days 31–60) | Custom domains, mobile app, SMS marketing, production hardening | 📋 Planned |
