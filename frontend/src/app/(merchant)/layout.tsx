@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, Suspense } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -57,6 +57,7 @@ export default function MerchantLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const setDemoMode = useGuildStore((s) => s.setDemoMode);
   const sidebarCollapsed = useGuildStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useGuildStore((s) => s.toggleSidebar);
   const setActiveModule = useGuildStore((s) => s.setActiveModule);
@@ -89,6 +90,21 @@ export default function MerchantLayout({
       setNotifications(phantomNotifications);
     }
   }, [demoMode, setInventory, setBounties, setLfgLobbies, setScoreboards, setFactionStandings, setDashboardStats, setActivityFeed, setNotifications]);
+
+  // Detect ?demo=true in URL and force demo mode (client-side only, no useSearchParams)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const demoParam = params.get('demo');
+    if (demoParam === 'true' && !demoMode) {
+      setDemoMode(true);
+      document.cookie = 'guildos_demo_mode=true; path=/; max-age=86400; SameSite=Lax';
+    }
+    if (demoParam === 'false' && demoMode) {
+      setDemoMode(false);
+      document.cookie = 'guildos_demo_mode=false; path=/; max-age=86400; SameSite=Lax';
+    }
+  }, [demoMode, setDemoMode]);
 
   // Track active module from pathname
   useEffect(() => {

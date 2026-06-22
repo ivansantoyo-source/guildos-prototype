@@ -282,7 +282,7 @@ export default function LandingPage() {
           </div>
           <div className="flex items-center gap-4">
             <Link href="/login" className="text-sm text-muted-foreground hover:text-primary transition-colors">Sign In</Link>
-            <Link href="/dashboard" className="px-4 py-2 text-sm rounded bg-primary text-primary-foreground font-bold hover:bg-primary/90 transition-colors">Launch Demo</Link>
+            <Link href="/dashboard?demo=true" className="px-4 py-2 text-sm rounded bg-primary text-primary-foreground font-bold hover:bg-primary/90 transition-colors">Launch Demo</Link>
           </div>
         </nav>
 
@@ -310,7 +310,7 @@ export default function LandingPage() {
           </p>
 
           <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link href="/dashboard" className="px-8 py-3.5 rounded-lg bg-primary text-primary-foreground font-bold text-base hover:bg-primary/90 transition-all hover:shadow-[0_0_30px_oklch(0.78_0.2_145/20%)]">
+            <Link href="/dashboard?demo=true" onClick={() => { if (typeof window !== 'undefined') { try { const { useGuildStore } = require('@/lib/store/useGuildStore'); useGuildStore.getState().setDemoMode(true); } catch {} }}} className="px-8 py-3.5 rounded-lg bg-primary text-primary-foreground font-bold text-base hover:bg-primary/90 transition-all hover:shadow-[0_0_30px_oklch(0.78_0.2_145/20%)]">
               ⚔️ Enter the Guild
             </Link>
             <Link href="#features" className="px-8 py-3.5 rounded-lg border border-border text-foreground font-medium text-base hover:border-primary/40 hover:bg-primary/5 transition-all">
@@ -406,7 +406,7 @@ export default function LandingPage() {
           Join the guild. Transform your retro-gaming storefront into an RPG-powered community hub.
         </p>
         <Link
-          href="/dashboard"
+          href="/dashboard?demo=true"
           className="mt-8 inline-flex px-8 py-3.5 rounded-lg bg-primary text-primary-foreground font-bold text-base hover:bg-primary/90 transition-all hover:shadow-[0_0_30px_oklch(0.78_0.2_145/20%)]"
         >
           ⚔️ Deploy Your Guild

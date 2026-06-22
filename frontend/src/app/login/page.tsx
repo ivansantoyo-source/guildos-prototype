@@ -69,7 +69,7 @@ export default function LoginPage() {
     setIsSubmitting(true);
     // Simulate auth delay
     setTimeout(() => {
-      router.push("/dashboard");
+      router.push("/dashboard?demo=true");
     }, 600);
   };
 
@@ -246,14 +246,14 @@ export default function LoginPage() {
 
             <div className="grid grid-cols-2 gap-2">
               <button
-                onClick={() => router.push("/dashboard")}
+                onClick={() => router.push("/dashboard?demo=true")}
                 className="flex items-center justify-center gap-2 px-4 py-2.5 text-xs rounded-lg border border-border text-foreground hover:bg-muted transition-colors"
               >
                 <span className="text-sm">🔵</span>
                 Google
               </button>
               <button
-                onClick={() => router.push("/dashboard")}
+                onClick={() => router.push("/dashboard?demo=true")}
                 className="flex items-center justify-center gap-2 px-4 py-2.5 text-xs rounded-lg border border-border text-foreground hover:bg-muted transition-colors"
               >
                 <span className="text-sm">👤</span>
@@ -265,7 +265,7 @@ export default function LoginPage() {
           {/* Demo Mode Quick Access */}
           <div className="mt-4 pt-4 border-t border-border">
             <button
-              onClick={() => router.push("/dashboard")}
+              onClick={() => router.push("/dashboard?demo=true")}
               className="w-full py-2.5 rounded-lg bg-gold/10 border border-gold/20 text-gold text-sm font-medium hover:bg-gold/20 transition-colors"
               id="btn-demo-mode"
             >
