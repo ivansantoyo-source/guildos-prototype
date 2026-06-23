@@ -9,7 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const status = searchParams.get("status");
-  const demoMode = await isDemoModeServer();
+  const demoMode = await isDemoModeServer(searchParams);
 
   // Demo mode — return filtered phantom data
   if (demoMode) {
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
 // POST /api/bounties — Create new bounty
 // ============================================================================
 export async function POST(request: NextRequest) {
-  const demoMode = await isDemoModeServer();
+  const demoMode = await isDemoModeServer(new URL(request.url).searchParams);
 
   try {
     const body = await request.json();

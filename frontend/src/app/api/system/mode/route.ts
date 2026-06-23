@@ -1,13 +1,14 @@
 import { isDemoModeServer } from '@/lib/toggles/server';
 import { TIER_FEATURES, shouldUseMock } from '@/lib/toggles';
+import { NextRequest } from 'next/server';
 
 /**
  * GET /api/system/mode
  * Returns the current system mode, tier, and available features.
  * Used by the UI to conditionally show/hide features.
  */
-export async function GET() {
-  const demoMode = await isDemoModeServer();
+export async function GET(request: NextRequest) {
+  const demoMode = await isDemoModeServer(request.nextUrl.searchParams);
 
   // In demo, assume wizard tier for maximum feature showcase
   const tier = demoMode ? 'wizard' : 'merchant';

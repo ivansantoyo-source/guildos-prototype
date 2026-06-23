@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
   const legendary = searchParams.get("legendary");
   const status = searchParams.get("status");
   const search = searchParams.get("q");
-  const demoMode = await isDemoModeServer();
+  const demoMode = await isDemoModeServer(searchParams);
 
   // Demo mode — return phantom data with filters applied
   if (demoMode) {
@@ -106,7 +106,7 @@ export async function GET(request: NextRequest) {
 // POST /api/inventory — Create new inventory item
 // ============================================================================
 export async function POST(request: NextRequest) {
-  const demoMode = await isDemoModeServer();
+  const demoMode = await isDemoModeServer(new URL(request.url).searchParams);
 
   try {
     const body = await request.json();
