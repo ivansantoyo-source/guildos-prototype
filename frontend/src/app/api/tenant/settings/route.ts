@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
-import { isDemoMode } from '@/lib/toggles';
+import { isDemoModeServer } from '@/lib/toggles/server';
+import { createClient } from '@/lib/supabase/server';
 import type { TenantConfig } from '@/lib/types/tenant-keys';
 
 const DEMO_CONFIG: TenantConfig = {
@@ -38,17 +39,34 @@ const DEMO_CONFIG: TenantConfig = {
  * In production: reads from guildos_core.organizations.config JSONB.
  * In demo: returns the demo tenant config.
  */
-export async function GET() {
-  if (isDemoMode()) {
-    return Response.json({ data: DEMO_CONFIG, source: 'demo' });
-  }
+export async function GET(request: NextRequest) {
+  try {
+    const demoMode = await isDemoModeServer(request.nextUrl.searchParams);
 
-  // Production: query Supabase
-  return Response.json({
-    data: DEMO_CONFIG,
-    source: 'supabase',
-    message: 'Connected to Supabase — tenant config from organizations.config',
-  });
+    if (demoMode) {
+      return Response.json({ data: DEMO_CONFIG, source: 'demo' });
+    }
+
+    // Production: query Supabase organizations table
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from('organizations')
+      .select('config')
+      .single();
+
+    if (error) {
+      console.error('[Tenant Settings] Supabase error:', error.message);
+      return Response.json({ error: 'Failed to fetch settings' }, { status: 500 });
+    }
+
+    return Response.json({
+      data: (data?.config as TenantConfig) || {},
+      source: 'supabase',
+    });
+  } catch (err) {
+    console.error('[Tenant Settings] Unexpected error:', err);
+    return Response.json({ error: 'Failed to fetch settings' }, { status: 500 });
+  }
 }
 
 /**
@@ -60,20 +78,42 @@ export async function GET() {
 export async function PUT(request: NextRequest) {
   try {
     const body = (await request.json()) as Partial<TenantConfig>;
+    const demoMode = await isDemoModeServer(request.nextUrl.searchParams);
 
     // In demo mode, return the merged config
-    if (isDemoMode()) {
+    if (demoMode) {
       const merged = { ...DEMO_CONFIG, ...body };
       return Response.json({ data: merged, source: 'demo' });
     }
 
-    // Production: update guildos_core.organizations.config
-    return Response.json({
-      data: body,
-      source: 'supabase',
-      message: 'Settings updated',
-    });
+    // Production: fetch existing config, merge, and update
+    const supabase = await createClient();
+
+    const { data: current, error: fetchError } = await supabase
+      .from('organizations')
+      .select('id, config')
+      .single();
+
+    if (fetchError) {
+      console.error('[Tenant Settings] Fetch error:', fetchError.message);
+      return Response.json({ error: 'Failed to fetch current settings' }, { status: 500 });
+    }
+
+    const merged = { ...(current?.config as object || {}), ...body };
+
+    const { error: updateError } = await supabase
+      .from('organizations')
+      .update({ config: merged })
+      .eq('id', current.id);
+
+    if (updateError) {
+      console.error('[Tenant Settings] Update error:', updateError.message);
+      return Response.json({ error: 'Failed to update settings' }, { status: 500 });
+    }
+
+    return Response.json({ data: merged, source: 'supabase' });
   } catch (error) {
-    return Response.json({ error: 'Invalid request', details: String(error) }, { status: 400 });
+    console.error('[Tenant Settings] Parse/update error:', error);
+    return Response.json({ error: 'Unable to process request' }, { status: 400 });
   }
 }

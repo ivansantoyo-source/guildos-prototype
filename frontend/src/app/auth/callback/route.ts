@@ -5,7 +5,11 @@ import { cookies } from "next/headers";
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const code = searchParams.get("code");
-  const redirectTo = searchParams.get("redirect") || "/dashboard";
+  let redirectTo = searchParams.get("redirect") || "/dashboard";
+  // Prevent open redirect — only allow relative paths
+  if (redirectTo.startsWith("//") || redirectTo.startsWith("http:") || redirectTo.startsWith("https:")) {
+    redirectTo = "/dashboard";
+  }
 
   if (code) {
     const cookieStore = await cookies();

@@ -60,8 +60,9 @@ export async function POST(request: NextRequest) {
         const status = res.ok ? 'delivered' : 'failed';
         return Response.json({ success: res.ok, status, source: 'live-iot' });
       } catch (err) {
+        console.error('[IoT] Webhook error:', err);
         return Response.json(
-          { success: false, error: 'IoT webhook unreachable', details: String(err) },
+          { success: false, error: 'Unable to process request' },
           { status: 502 }
         );
       }
@@ -73,8 +74,9 @@ export async function POST(request: NextRequest) {
       message: 'IoT trigger processed (no webhook URL configured)',
     });
   } catch (error) {
+    console.error('[IoT] Trigger error:', error);
     return Response.json(
-      { success: false, error: 'Failed to process IoT trigger', details: String(error) },
+      { success: false, error: 'Unable to process request' },
       { status: 500 }
     );
   }

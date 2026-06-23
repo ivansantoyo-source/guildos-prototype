@@ -72,8 +72,9 @@ export async function POST(request: NextRequest) {
       affected_tenants: isDemoMode() ? 3 : 0,
     });
   } catch (error) {
+    console.error('[Blacklist] Registration error:', error);
     return Response.json(
-      { success: false, error: 'Failed to register blacklist entry', details: String(error) },
+      { success: false, error: 'Unable to process request' },
       { status: 500 }
     );
   }

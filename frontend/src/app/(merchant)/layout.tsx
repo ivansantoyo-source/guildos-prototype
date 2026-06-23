@@ -21,6 +21,7 @@ import {
 import { playClick } from "@/lib/audio/sounds";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { DemoBanner } from "@/components/widgets/demo-banner";
+import { RealtimeProvider } from "@/components/providers/realtime-provider";
 
 // Nav items — hrefs preserve demo mode param so navigation works without redirects
 const BASE_NAV = [
@@ -300,7 +301,7 @@ export default function MerchantLayout({
               animate="animate"
               exit={reducedMotion ? undefined : "exit"}
             >
-              {children}
+              <RealtimeProvider>{children}</RealtimeProvider>
             </motion.div>
           </AnimatePresence>
         </main>

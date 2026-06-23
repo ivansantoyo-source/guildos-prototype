@@ -94,8 +94,9 @@ export async function POST(request: NextRequest) {
       source: 'production',
     });
   } catch (error) {
+    console.error('[Vision] Scan error:', error);
     return Response.json(
-      { error: 'Failed to process scan', details: String(error) },
+      { error: 'Unable to process request' },
       { status: 500 }
     );
   }

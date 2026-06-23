@@ -1,3 +1,4 @@
+import "@/lib/error-handler";
 import type { Metadata } from "next";
 import { JetBrains_Mono } from "next/font/google";
 import "./globals-v2.css";

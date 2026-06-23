@@ -193,23 +193,12 @@ export function useRealtimeSubscription<T = Record<string, unknown>>({
         if (aborted) return;
         setStatus("connecting");
 
-        // Dynamic import avoids SSR issues
-        const { createClient } = await import("@supabase/supabase-js");
-
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-        const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-        if (!supabaseUrl || !supabaseAnonKey) {
-          console.warn(
-            "[useRealtime] No Supabase credentials found — subscription unavailable"
-          );
-          setStatus("disconnected");
-          return;
-        }
+        // Use the project-configured Supabase client (schema: guildos_core)
+        const { createClient } = await import("@/lib/supabase/client");
 
         if (aborted) return;
 
-        const supabase = createClient(supabaseUrl, supabaseAnonKey);
+        const supabase = createClient();
 
         const channel = supabase
           .channel(`realtime-${table}-${Date.now()}`)
@@ -217,7 +206,7 @@ export function useRealtimeSubscription<T = Record<string, unknown>>({
             "postgres_changes" as any,
             {
               event: "*",
-              schema: "public",
+              schema: "guildos_core",
               table,
               filter: filter || undefined,
             },

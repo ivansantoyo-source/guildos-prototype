@@ -49,8 +49,9 @@ export async function POST(request: NextRequest) {
 
     return Response.json({ data: newCode }, { status: 201 });
   } catch (error) {
+    console.error('[Discounts] Parse error:', error);
     return Response.json(
-      { error: 'Invalid request', details: String(error) },
+      { error: 'Unable to process request' },
       { status: 400 }
     );
   }
@@ -85,8 +86,9 @@ export async function PUT(request: NextRequest) {
 
     return Response.json({ error: 'Not found' }, { status: 404 });
   } catch (error) {
+    console.error('[Discounts] Parse error:', error);
     return Response.json(
-      { error: 'Invalid request', details: String(error) },
+      { error: 'Unable to process request' },
       { status: 400 }
     );
   }

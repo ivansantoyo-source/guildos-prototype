@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { rateLimit } from '@/lib/security/rate-limit';
 
 // ============================================================================
 // GUILDOS — Synthetic Shopkeeper AI Route
@@ -103,6 +104,13 @@ function matchMockResponse(query: string, inventoryContext: string): string {
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
 
+  // Rate limit: 10 requests per minute per IP
+  const ip = request.headers.get('x-forwarded-for') || 'unknown';
+  const { success } = rateLimit(`shopkeeper:${ip}`, { windowMs: 60_000, maxRequests: 10 });
+  if (!success) {
+    return Response.json({ error: 'Too many requests' }, { status: 429 });
+  }
+
   try {
     const body = await request.json();
     const { query, inventory } = body;
@@ -193,11 +201,9 @@ export async function POST(request: NextRequest) {
       demo: true,
     });
   } catch (error) {
+    console.error('[Shopkeeper] Engine error:', error);
     return Response.json(
-      {
-        error: 'Internal server error',
-        details: String(error),
-      },
+      { error: 'Unable to process request' },
       { status: 500 }
     );
   }

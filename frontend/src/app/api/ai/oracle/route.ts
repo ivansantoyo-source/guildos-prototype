@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { rateLimit } from '@/lib/security/rate-limit';
 import type { OracleMatch } from '@/lib/types';
 import { phantomInventory, phantomProfiles } from '@/mocks/phantomData';
 import { isDemoMode } from '@/lib/toggles';
@@ -13,6 +14,13 @@ import { isDemoMode } from '@/lib/toggles';
  */
 export async function POST(request: NextRequest) {
   try {
+    // Rate limit: 10 requests per minute per IP
+    const ip = request.headers.get('x-forwarded-for') || 'unknown';
+    const { success } = rateLimit(`oracle:${ip}`, { windowMs: 60_000, maxRequests: 10 });
+    if (!success) {
+      return Response.json({ error: 'Too many requests' }, { status: 429 });
+    }
+
     const body = await request.json().catch(() => ({}));
     const { userIds } = body as { userIds?: string[] };
 
@@ -24,8 +32,9 @@ export async function POST(request: NextRequest) {
     // TODO: Wire to Supabase when PRODUCTION mode is active
     return Response.json({ matches: [], source: 'supabase' });
   } catch (error) {
+    console.error('[Oracle] Engine error:', error);
     return Response.json(
-      { error: 'Oracle engine error', details: String(error) },
+      { error: 'Unable to process request' },
       { status: 500 }
     );
   }

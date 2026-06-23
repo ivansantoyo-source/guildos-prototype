@@ -1,9 +1,13 @@
 // ============================================================================
 // GUILDOS — Stripe Billing Integration
 // Subscription management, checkout sessions, billing portal
+// Uses Stripe SDK v22+ with optional tenant BYO key support.
 // ============================================================================
 
-import { shouldUseMock } from '@/lib/toggles';
+import Stripe from 'stripe';
+import { isDemoMode } from '@/lib/toggles';
+import { getEffectiveKey } from '@/lib/types/tenant-keys';
+import type { TenantConfig } from '@/lib/types/tenant-keys';
 
 export interface CheckoutSession {
   url: string;
@@ -17,150 +21,207 @@ export interface SubscriptionStatus {
   cancelAtPeriodEnd: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Cache Stripe clients by secret key to avoid re-initialization
+ * within the same request/process lifetime.
+ */
+const stripeClients = new Map<string, Stripe>();
+
+function getStripeClient(secretKey: string): Stripe {
+  let client = stripeClients.get(secretKey);
+  if (!client) {
+    client = new Stripe(secretKey);
+    stripeClients.set(secretKey, client);
+  }
+  return client;
+}
+
+/**
+ * Resolve the effective Stripe secret key.
+ * Priority: tenant BYO key > platform env var.
+ */
+function getSecretKey(tenantConfig?: TenantConfig | null): string | null {
+  return getEffectiveKey(tenantConfig ?? null, 'stripe');
+}
+
+/**
+ * Price IDs from the Stripe Dashboard.
+ * Merchants with their own Stripe accounts can override these per-tenant.
+ */
+function getPriceIds(): Record<string, string> {
+  return {
+    merchant: process.env.STRIPE_PRICE_MERCHANT ?? 'price_merchant',
+    wizard: process.env.STRIPE_PRICE_WIZARD ?? 'price_wizard',
+    time_lord: process.env.STRIPE_PRICE_TIME_LORD ?? 'price_time_lord',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
 /**
  * Create a Stripe Checkout Session for subscribing to a GuildOS tier.
+ *
+ * @param tier          Subscription tier
+ * @param customerId    Optional existing Stripe customer ID
+ * @param successUrl    Redirect URL on successful payment
+ * @param cancelUrl     Redirect URL on cancellation
+ * @param tenantConfig  Optional tenant BYO key config (if omitted, falls back to platform env vars)
  */
 export async function createCheckoutSession(
   tier: 'merchant' | 'wizard' | 'time_lord',
   customerId?: string,
   successUrl?: string,
-  cancelUrl?: string
+  cancelUrl?: string,
+  tenantConfig?: TenantConfig | null
 ): Promise<CheckoutSession> {
-  if (shouldUseMock('payments')) {
+  // 1. Mock in demo mode
+  if (isDemoMode()) {
     return mockCheckoutSession(tier);
   }
 
-  // Production: call Stripe API
   try {
-    const secretKey = process.env.STRIPE_SECRET_KEY;
+    // 2. Resolve the effective key (tenant BYO > platform env var)
+    const secretKey = getSecretKey(tenantConfig);
+
     if (!secretKey) {
-      console.warn('Stripe not configured — falling back to mock');
+      console.warn('[Stripe] No secret key configured (tenant or platform) — falling back to mock');
       return mockCheckoutSession(tier);
     }
 
-    // Stripe Price IDs would come from the Stripe Dashboard
-    const PRICE_IDS: Record<string, string> = {
-      merchant: process.env.STRIPE_PRICE_MERCHANT ?? 'price_merchant',
-      wizard: process.env.STRIPE_PRICE_WIZARD ?? 'price_wizard',
-      time_lord: process.env.STRIPE_PRICE_TIME_LORD ?? 'price_time_lord',
-    };
+    // 3. Use Stripe SDK
+    const stripe = getStripeClient(secretKey);
+    const PRICE_IDS = getPriceIds();
 
-    const response = await fetch('https://api.stripe.com/v1/checkout/sessions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${secretKey}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        'line_items[0][price]': PRICE_IDS[tier],
-        'line_items[0][quantity]': '1',
-        mode: 'subscription',
-        success_url: successUrl ?? `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?checkout=success`,
-        cancel_url: cancelUrl ?? `${process.env.NEXT_PUBLIC_APP_URL}/?checkout=cancelled`,
-        ...(customerId ? { customer: customerId } : {}),
-      }),
+    const session = await stripe.checkout.sessions.create({
+      line_items: [{ price: PRICE_IDS[tier], quantity: 1 }],
+      mode: 'subscription',
+      success_url:
+        successUrl ??
+        `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?checkout=success`,
+      cancel_url:
+        cancelUrl ??
+        `${process.env.NEXT_PUBLIC_APP_URL}/?checkout=cancelled`,
+      ...(customerId ? { customer: customerId } : {}),
     });
 
-    const data = await response.json();
-
     return {
-      url: data.url ?? '#',
-      sessionId: data.id ?? `cs-${Date.now()}`,
+      url: session.url ?? '#',
+      sessionId: session.id,
     };
   } catch (error) {
-    console.error('Stripe error:', error);
+    console.error('[Stripe] Checkout session error:', error);
     return mockCheckoutSession(tier);
   }
 }
 
 /**
  * Create a Stripe Billing Portal session for managing subscriptions.
+ *
+ * @param customerId    Stripe customer ID
+ * @param tenantConfig  Optional tenant BYO key config
  */
 export async function createBillingPortalSession(
-  customerId: string
+  customerId: string,
+  tenantConfig?: TenantConfig | null
 ): Promise<{ url: string }> {
-  if (shouldUseMock('payments')) {
+  // 1. Mock in demo mode
+  if (isDemoMode()) {
     return { url: `https://billing.stripe.com/mock/${customerId}` };
   }
 
   try {
-    const secretKey = process.env.STRIPE_SECRET_KEY;
+    // 2. Resolve effective key
+    const secretKey = getSecretKey(tenantConfig);
+
     if (!secretKey) {
       return { url: `https://billing.stripe.com/mock/${customerId}` };
     }
 
-    const response = await fetch('https://api.stripe.com/v1/billing_portal/sessions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${secretKey}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        customer: customerId,
-        return_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard`,
-      }),
+    // 3. Use Stripe SDK
+    const stripe = getStripeClient(secretKey);
+
+    const session = await stripe.billingPortal.sessions.create({
+      customer: customerId,
+      return_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard`,
     });
 
-    const data = await response.json();
-    return { url: data.url ?? '#' };
+    return { url: session.url };
   } catch (error) {
-    console.error('Stripe portal error:', error);
+    console.error('[Stripe] Billing portal error:', error);
     return { url: `https://billing.stripe.com/mock/${customerId}` };
   }
 }
 
 /**
  * Get subscription status for a customer.
+ *
+ * @param customerId    Stripe customer ID
+ * @param tenantConfig  Optional tenant BYO key config
  */
 export async function getSubscriptionStatus(
-  customerId: string
+  customerId: string,
+  tenantConfig?: TenantConfig | null
 ): Promise<SubscriptionStatus> {
-  if (shouldUseMock('payments')) {
-    return {
-      tier: 'wizard',
-      status: 'active',
-      currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      cancelAtPeriodEnd: false,
-    };
+  // 1. Mock in demo mode
+  if (isDemoMode()) {
+    return mockSubscriptionStatus();
   }
 
-  // Production: query Stripe for real subscription status
   try {
-    const secretKey = process.env.STRIPE_SECRET_KEY;
+    // 2. Resolve effective key
+    const secretKey = getSecretKey(tenantConfig);
+
     if (!secretKey) {
       return mockSubscriptionStatus();
     }
 
-    const response = await fetch(
-      `https://api.stripe.com/v1/subscriptions?customer=${customerId}&status=active`,
-      {
-        headers: { 'Authorization': `Bearer ${secretKey}` },
-      }
-    );
+    // 3. Use Stripe SDK
+    const stripe = getStripeClient(secretKey);
 
-    const data = await response.json();
-    const sub = data.data?.[0];
+    const subscriptions = await stripe.subscriptions.list({
+      customer: customerId,
+      status: 'active',
+      limit: 1,
+    });
+
+    const sub = subscriptions.data[0];
 
     if (!sub) {
-      return { tier: 'none', status: 'inactive', currentPeriodEnd: '', cancelAtPeriodEnd: false };
+      return {
+        tier: 'none',
+        status: 'inactive',
+        currentPeriodEnd: '',
+        cancelAtPeriodEnd: false,
+      };
     }
 
     return {
       tier: inferTierFromPriceId(sub.items?.data?.[0]?.price?.id ?? ''),
-      status: sub.status ?? 'unknown',
-      currentPeriodEnd: new Date((sub.current_period_end ?? 0) * 1000).toISOString(),
-      cancelAtPeriodEnd: sub.cancel_at_period_end ?? false,
+      status: sub.status,
+      currentPeriodEnd: new Date(
+        ((sub as unknown as Record<string, unknown>).current_period_end as number ?? 0) * 1000
+      ).toISOString(),
+      cancelAtPeriodEnd: (sub as unknown as Record<string, unknown>).cancel_at_period_end as boolean ?? false,
     };
   } catch (error) {
-    console.error('Stripe subscription error:', error);
+    console.error('[Stripe] Subscription status error:', error);
     return mockSubscriptionStatus();
   }
 }
 
-// --- Mock Helpers ---
+// ---------------------------------------------------------------------------
+// Mock Helpers — used when running in demo mode or without Stripe configured
+// ---------------------------------------------------------------------------
 
 function mockCheckoutSession(tier: string): CheckoutSession {
-  console.log(`%c[DEMO STRIPE] %cCreating checkout for ${tier} tier`,
+  console.log(
+    '%c[DEMO STRIPE] %cCreating checkout for ' + tier + ' tier',
     'color: blue; font-weight: bold;',
     'color: white;'
   );
@@ -175,14 +236,18 @@ function mockSubscriptionStatus(): SubscriptionStatus {
   return {
     tier: 'wizard',
     status: 'active',
-    currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    currentPeriodEnd: new Date(
+      Date.now() + 30 * 24 * 60 * 60 * 1000
+    ).toISOString(),
     cancelAtPeriodEnd: false,
   };
 }
 
 function inferTierFromPriceId(priceId: string): string {
-  if (priceId.includes('time_lord') || priceId.includes('499')) return 'time_lord';
+  if (priceId.includes('time_lord') || priceId.includes('499'))
+    return 'time_lord';
   if (priceId.includes('wizard') || priceId.includes('249')) return 'wizard';
-  if (priceId.includes('merchant') || priceId.includes('99')) return 'merchant';
+  if (priceId.includes('merchant') || priceId.includes('99'))
+    return 'merchant';
   return 'unknown';
 }

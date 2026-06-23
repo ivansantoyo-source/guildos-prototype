@@ -71,8 +71,10 @@ export async function GET(request: NextRequest) {
       query = query.eq("status", status);
     }
     if (search) {
+      // Escape PostgREST LIKE wildcards to prevent query manipulation
+      const safe = search.replace(/[%_*]/g, '\\$&');
       query = query.or(
-        `item_name.ilike.%${search}%,platform.ilike.%${search}%`
+        `item_name.ilike.%${safe}%,platform.ilike.%${safe}%`
       );
     }
 

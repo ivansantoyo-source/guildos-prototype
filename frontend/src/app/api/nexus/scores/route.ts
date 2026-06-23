@@ -37,7 +37,9 @@ export async function GET(request: NextRequest) {
       .order("score", { ascending: false });
 
     if (game) {
-      query = query.ilike("game_title", `%${game}%`);
+      // Escape LIKE wildcards to prevent query manipulation
+      const safe = game.replace(/[%_*]/g, '\\$&');
+      query = query.ilike("game_title", `%${safe}%`);
     }
 
     const { data, error } = await query;

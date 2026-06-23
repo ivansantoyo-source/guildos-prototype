@@ -160,3 +160,7 @@ export async function proxy(request: NextRequest) {
 
   return response;
 }
+
+// Next.js 16 uses proxy.ts instead of middleware.ts.
+// The default export and config named export are the entry points.
+export default proxy;

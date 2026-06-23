@@ -64,6 +64,7 @@ interface GuildState {
   addBounty: (bounty: Bounty) => void;
   fulfillBounty: (id: string, fulfilled_by: string) => void;
   removeBounty: (id: string) => void;
+  updateBounty: (id: string, updates: Partial<Bounty>) => void;
   setLfgLobbies: (lobbies: NexusLfg[]) => void;
   addLfgLobby: (lobby: NexusLfg) => void;
   joinLobby: (id: string) => void;
@@ -80,6 +81,7 @@ interface GuildState {
   markNotificationRead: (id: string) => void;
   setDashboardStats: (stats: DashboardStats) => void;
   setActivityFeed: (events: ActivityEvent[]) => void;
+  addActivity: (event: ActivityEvent) => void;
   addShopkeeperMessage: (message: ShopkeeperMessage) => void;
   clearShopkeeperMessages: () => void;
 }
@@ -177,6 +179,12 @@ export const useGuildStore = create<GuildState>()(
         set((state) => ({
           bounties: state.bounties.filter((b) => b.id !== id),
         })),
+      updateBounty: (id, updates) =>
+        set((state) => ({
+          bounties: state.bounties.map((b) =>
+            b.id === id ? { ...b, ...updates } : b
+          ),
+        })),
       setLfgLobbies: (lobbies) => set({ lfgLobbies: lobbies }),
       addLfgLobby: (lobby) =>
         set((state) => ({ lfgLobbies: [lobby, ...state.lfgLobbies] })),
@@ -234,6 +242,8 @@ export const useGuildStore = create<GuildState>()(
         })),
       setDashboardStats: (stats) => set({ dashboardStats: stats }),
       setActivityFeed: (events) => set({ activityFeed: events }),
+      addActivity: (event) =>
+        set((state) => ({ activityFeed: [event, ...state.activityFeed] })),
       addShopkeeperMessage: (message) =>
         set((state) => ({
           shopkeeperMessages: [...state.shopkeeperMessages, message],
