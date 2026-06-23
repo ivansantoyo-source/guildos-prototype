@@ -21,24 +21,25 @@ export function CommandPalette() {
   const router = useRouter();
   const inventory = useGuildStore((s) => s.inventory);
   const bounties = useGuildStore((s) => s.bounties);
-  const lobbies = useGuildStore((s) => s.lfgLobbies);
+  const demoMode = useGuildStore((s) => s.demoMode);
+  const demo = demoMode ? "?demo=true" : "";
 
   // Build command list
   const commands = useMemo((): CommandItem[] => {
     const nav: CommandItem[] = [
-      { id: "nav-dashboard", group: "Navigate", icon: "⚔️", title: "Dashboard", subtitle: "RPG Admin Console", action: () => router.push("/dashboard") },
-      { id: "nav-inventory", group: "Navigate", icon: "📦", title: "Inventory Matrix", subtitle: "Loot Scanner", action: () => router.push("/inventory") },
-      { id: "nav-bounties", group: "Navigate", icon: "📜", title: "Bounty Board", subtitle: "Quest Board", action: () => router.push("/bounty-board") },
-      { id: "nav-nexus", group: "Navigate", icon: "🏟️", title: "The Nexus", subtitle: "LFG + Scores + Rooms", action: () => router.push("/nexus") },
-      { id: "nav-shopkeeper", group: "Navigate", icon: "🤖", title: "AI Shopkeeper", subtitle: "DeepSeek-V3 Assistant", action: () => router.push("/shopkeeper") },
-      { id: "nav-analytics", group: "Navigate", icon: "📊", title: "Analytics", subtitle: "Business Intelligence", action: () => router.push("/analytics") },
+      { id: "nav-dashboard", group: "Navigate", icon: "⚔️", title: "Dashboard", subtitle: "RPG Admin Console", action: () => router.push(`/dashboard${demo}`) },
+      { id: "nav-inventory", group: "Navigate", icon: "📦", title: "Inventory Matrix", subtitle: "Loot Scanner", action: () => router.push(`/inventory${demo}`) },
+      { id: "nav-bounties", group: "Navigate", icon: "📜", title: "Bounty Board", subtitle: "Quest Board", action: () => router.push(`/bounty-board${demo}`) },
+      { id: "nav-nexus", group: "Navigate", icon: "🏟️", title: "The Nexus", subtitle: "LFG + Scores + Rooms", action: () => router.push(`/nexus${demo}`) },
+      { id: "nav-shopkeeper", group: "Navigate", icon: "🤖", title: "AI Shopkeeper", subtitle: "DeepSeek-V3 Assistant", action: () => router.push(`/shopkeeper${demo}`) },
+      { id: "nav-analytics", group: "Navigate", icon: "📊", title: "Analytics", subtitle: "Business Intelligence", action: () => router.push(`/analytics${demo}`) },
     ];
 
     const actions: CommandItem[] = [
-      { id: "act-scan", group: "Quick Actions", icon: "📸", title: "Scan New Item", subtitle: "Add inventory via camera", action: () => router.push("/inventory") },
-      { id: "act-bounty", group: "Quick Actions", icon: "📌", title: "Post Bounty", subtitle: "Create new quest", action: () => router.push("/bounty-board") },
-      { id: "act-lobby", group: "Quick Actions", icon: "🎮", title: "Create Lobby", subtitle: "Host a gaming session", action: () => router.push("/nexus") },
-      { id: "act-chat", group: "Quick Actions", icon: "💬", title: "Ask Shopkeeper", subtitle: "AI-powered recommendations", action: () => router.push("/shopkeeper") },
+      { id: "act-scan", group: "Quick Actions", icon: "📸", title: "Scan New Item", subtitle: "Add inventory via camera", action: () => router.push(`/inventory${demo}`) },
+      { id: "act-bounty", group: "Quick Actions", icon: "📌", title: "Post Bounty", subtitle: "Create new quest", action: () => router.push(`/bounty-board${demo}`) },
+      { id: "act-lobby", group: "Quick Actions", icon: "🎮", title: "Create Lobby", subtitle: "Host a gaming session", action: () => router.push(`/nexus${demo}`) },
+      { id: "act-chat", group: "Quick Actions", icon: "💬", title: "Ask Shopkeeper", subtitle: "AI-powered recommendations", action: () => router.push(`/shopkeeper${demo}`) },
       { id: "act-mode", group: "Quick Actions", icon: "🔄", title: "Toggle Demo Mode", subtitle: "Switch between demo and production", action: () => useGuildStore.getState().setDemoMode(!useGuildStore.getState().demoMode) },
     ];
 
@@ -48,7 +49,7 @@ export function CommandPalette() {
       icon: item.is_legendary ? "💎" : "🎮",
       title: item.item_name,
       subtitle: `${item.platform ?? ""} — $${item.market_value}`,
-      action: () => router.push("/inventory"),
+      action: () => router.push(`/inventory${demo}`),
     }));
 
     const bountyItems: CommandItem[] = bounties.filter((b) => b.status === "ACTIVE").slice(0, 5).map((b) => ({
@@ -57,7 +58,7 @@ export function CommandPalette() {
       icon: "📜",
       title: b.target_item_name,
       subtitle: `Reward: $${b.store_credit_value.toFixed(2)}`,
-      action: () => router.push("/bounty-board"),
+      action: () => router.push(`/bounty-board${demo}`),
     }));
 
     return [...nav, ...actions, ...invItems, ...bountyItems];
