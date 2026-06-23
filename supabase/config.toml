@@ -2,6 +2,8 @@
 # Project ref: tyustwqwvjmzvuazfwkv (Aegis-OS-DB)
 # Schema: guildos_core (isolated from public)
 
+project_id = "tyustwqwvjmzvuazfwkv"
+
 [api]
 enabled = true
 port = 54321

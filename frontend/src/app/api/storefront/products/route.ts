@@ -1,36 +1,75 @@
 // ============================================================================
 // GUILDOS — Storefront Products API
-// Customer-facing product catalog endpoint
+//
+// PUBLIC ENDPOINT — Customer-facing product catalog.
+// This endpoint is intentionally unauthenticated and serves public product
+// listings to storefront visitors. No authentication or role checks are
+// applied because customers browsing the catalog are not required to log in.
+//
+// Security considerations (READ BEFORE MODIFYING):
+//  - Rate limited (120 req/min) to prevent scraping / abuse.
+//  - Only returns items with status === 'ACTIVE'.
+//  - ALL internal fields (organization_id, stock_count, scrap_value,
+//    price_spike_flag, notes, pricecharting_id, last_price_sync,
+//    created_at, updated_at) are stripped by sanitizeItem() before
+//    the response is sent — this is the SECOND line of defense after RLS.
+//  - In production, the Supabase query MUST filter by the session's
+//    organization_id. Never query guildos_core.inventory without
+//    WHERE organization_id = <session_org>. RLS is NOT sufficient alone
+//    because a misconfigured policy or a super-user role could bypass it.
 // ============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
 import { isDemoModeServer } from '@/lib/toggles/server';
 import { phantomInventory } from '@/mocks/phantomData';
+import { withRateLimit } from '@/lib/auth/server-auth';
+import type { ServerSession } from '@/lib/auth/server-auth';
 
-// Rate limiting for public endpoint — prevents scraping/abuse
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-const PUBLIC_RATE_LIMIT = 60; // requests per window
-const RATE_WINDOW = 60_000; // 1 minute
-
-function checkPublicRateLimit(identifier: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(identifier);
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(identifier, { count: 1, resetAt: now + RATE_WINDOW });
-    return true;
-  }
-  if (entry.count >= PUBLIC_RATE_LIMIT) return false;
-  entry.count++;
-  return true;
+// ────────────────────────────────────────────────────────────────────────────
+// Typesafe public product shape — NO internal fields exposed to customers.
+// ────────────────────────────────────────────────────────────────────────────
+interface PublicStorefrontItem {
+  id: string;
+  item_name: string;
+  platform?: string;
+  condition?: string;
+  market_value: number;
+  our_price?: number;
+  is_legendary: boolean;
+  tags: string[];
+  image_url?: string;
+  scanned_image_url?: string;
+  status: string;
 }
 
-export async function GET(request: NextRequest) {
-  // Rate limit — public endpoint, protect against abuse
-  const ip = request.headers.get('x-forwarded-for') || 'unknown';
-  if (!checkPublicRateLimit(ip)) {
-    return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
-  }
+/**
+ * Strip all internal/administrative fields from an inventory item before
+ * returning it to the public storefront. This is the application-layer
+ * sanitization that backs up RLS / query scoping.
+ *
+ * Fields removed: organization_id, scrap_value, stock_count, price_spike_flag,
+ * pricecharting_id, last_price_sync, notes, created_at, updated_at.
+ */
+function sanitizeItem(item: Record<string, unknown>): PublicStorefrontItem {
+  return {
+    id: item.id as string,
+    item_name: item.item_name as string,
+    platform: item.platform as string | undefined,
+    condition: item.condition as string | undefined,
+    market_value: item.market_value as number,
+    our_price: item.our_price as number | undefined,
+    is_legendary: item.is_legendary as boolean,
+    tags: item.tags as string[],
+    image_url: item.image_url as string | undefined,
+    scanned_image_url: item.scanned_image_url as string | undefined,
+    status: item.status as string,
+  };
+}
 
+async function handler(
+  request: NextRequest,
+  session: ServerSession | null
+): Promise<NextResponse> {
   const { searchParams } = request.nextUrl;
   const demo = await isDemoModeServer(searchParams);
 
@@ -52,12 +91,33 @@ export async function GET(request: NextRequest) {
     if (demo) {
       items = [...phantomInventory];
     } else {
-      // Production: query Supabase guildos_core.inventory
-      // For now, fall back to phantom in production without Supabase
+      // PRODUCTION PATH — SECURITY CRITICAL
+      //
+      // When wiring Supabase, this query MUST:
+      //   1.  Scope to the tenant's organization_id from the session:
+      //         supabase.from('inventory')
+      //           .select('*')
+      //           .eq('organization_id', session?.organization_id)
+      //   2.  Never fall back to a query without organization_id filter
+      //   3.  Never use .select('*') with a service-role client outside a
+      //       tenant-scoped RPC
+      //
+      // If session is null (no auth), return 401 — anonymous customers
+      // browsing the storefront use the ?demo=true path, not production.
+      // An unauthenticated production request should never hit the DB.
+      //
+      // TODO: Replace with Supabase query once production DB is wired.
+      //       See security notes above.
+      if (!session?.organization_id) {
+        return NextResponse.json(
+          { error: 'Authentication required' },
+          { status: 401 }
+        );
+      }
       items = [...phantomInventory];
     }
 
-    // Filter: only show ACTIVE items (customer-facing)
+    // Security: only expose ACTIVE items to customers
     items = items.filter((item) => item.status === 'ACTIVE');
 
     // Filter: single item by ID
@@ -66,7 +126,7 @@ export async function GET(request: NextRequest) {
       if (!item) {
         return NextResponse.json({ error: 'Item not found' }, { status: 404 });
       }
-      return NextResponse.json({ data: item });
+      return NextResponse.json({ data: sanitizeItem(item as unknown as Record<string, unknown>) });
     }
 
     // Filter: search
@@ -138,7 +198,7 @@ export async function GET(request: NextRequest) {
     const paged = items.slice(start, start + limit);
 
     return NextResponse.json({
-      data: paged,
+      data: paged.map((i) => sanitizeItem(i as unknown as Record<string, unknown>)),
       meta: {
         total,
         page,
@@ -156,3 +216,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to fetch products' }, { status: 500 });
   }
 }
+
+/**
+ * GET /api/storefront/products
+ *
+ * Public product catalog. Rate-limited at 120 requests per 60 seconds.
+ * Wrapped with withRateLimit (no auth required) to guard against abuse
+ * while keeping the endpoint accessible to anonymous storefront visitors.
+ */
+export const GET = withRateLimit(handler, 'storefront-products', 120, 60_000);

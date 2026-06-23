@@ -5,6 +5,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { isDemoMode } from '@/lib/toggles';
+import { getStripeClient } from '@/lib/integrations/stripe';
 
 export async function POST(request: NextRequest) {
   // Auth: CRON_SECRET header required
@@ -14,9 +16,26 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  // Demo mode guard — return mock sweep without touching Supabase or Stripe
+  if (isDemoMode()) {
+    return NextResponse.json({
+      swept: 0,
+      playersRefunded: 0,
+      totalRefunded: 0,
+      message: '[DEMO] Escrow sweep skipped — demo mode active',
+    });
+  }
+
   try {
     const supabase = await createClient();
     const now = new Date().toISOString();
+
+    // Resolve Stripe client for production refunds
+    const stripeSecret = process.env.STRIPE_SECRET_KEY;
+    let stripe = null;
+    if (stripeSecret) {
+      stripe = getStripeClient(stripeSecret);
+    }
 
     // Find lobbies past auto_refund_at with partial funding
     const { data: expiredLobbies, error: fetchErr } = await supabase
@@ -43,8 +62,20 @@ export async function POST(request: NextRequest) {
 
       if (participants) {
         for (const p of participants) {
-          // In production: call Stripe refund API
-          // await stripe.refunds.create({ payment_intent: p.stripe_payment_intent_id });
+          // Production: call Stripe refund API before marking as REFUNDED
+          if (stripe && p.stripe_payment_intent_id) {
+            try {
+              await stripe.refunds.create({
+                payment_intent: p.stripe_payment_intent_id,
+              });
+            } catch (stripeErr) {
+              console.error(
+                `[Escrow Sweep] Stripe refund failed for PI ${p.stripe_payment_intent_id}:`,
+                stripeErr,
+              );
+              // Continue — mark DB state but log the failure
+            }
+          }
 
           // Mark participant as refunded
           await supabase

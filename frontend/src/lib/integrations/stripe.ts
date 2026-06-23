@@ -31,7 +31,7 @@ export interface SubscriptionStatus {
  */
 const stripeClients = new Map<string, Stripe>();
 
-function getStripeClient(secretKey: string): Stripe {
+export function getStripeClient(secretKey: string): Stripe {
   let client = stripeClients.get(secretKey);
   if (!client) {
     client = new Stripe(secretKey);

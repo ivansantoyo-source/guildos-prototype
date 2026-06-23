@@ -15,7 +15,15 @@
     "test:e2e:critical": "playwright test --config=e2e/playwright.config.ts e2e/critical-path.spec.ts",
     "test:load": "bash load-tests/run.sh local",
     "test:load:prod": "bash load-tests/run.sh prod",
-    "test:smoke": "k6 run --env BASE_URL=http://localhost:3000 load-tests/scenarios/smoke-test.js"
+    "test:smoke": "k6 run --env BASE_URL=http://localhost:3000 load-tests/scenarios/smoke-test.js",
+    "db:link": "supabase link --project-ref tyustwqwvjmzvuazfwkv",
+    "db:migration:create": "supabase migration new",
+    "db:migration:up": "supabase migration up",
+    "db:migration:list": "supabase migration list",
+    "db:push": "supabase db push",
+    "db:diff": "supabase db diff --schema guildos_core",
+    "db:types": "supabase gen types typescript --linked > src/lib/types/database.ts",
+    "db:seed": "bash ../scripts/migrate.sh --seed-only"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -48,6 +56,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
     "tailwindcss": "^4",
+    "supabase": "^2.106.0",
     "typescript": "^5"
   }
 }

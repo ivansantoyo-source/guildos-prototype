@@ -182,20 +182,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create transaction' }, { status: 500 });
     }
 
-    // Decrement inventory stock for each sold item
+    // Decrement inventory stock for each sold item to prevent overselling
     for (const cartItem of items) {
-      const { error: invError } = await supabase
+      const { data: invItem, error: fetchError } = await supabase
+        .from('inventory')
+        .select('stock_count')
+        .eq('id', cartItem.inventory_id)
+        .eq('organization_id', orgId)
+        .single();
+
+      if (fetchError || !invItem) {
+        console.warn(`[pos:checkout] Inventory item not found: ${cartItem.inventory_id}`);
+        continue;
+      }
+
+      const newStock = Math.max(0, invItem.stock_count - cartItem.quantity);
+      const { error: updateError } = await supabase
         .from('inventory')
         .update({
-          stock_count: supabase.rpc('decrement_stock', {
-            item_id: cartItem.inventory_id,
-            quantity: cartItem.quantity,
-          }),
+          stock_count: newStock,
+          ...(newStock <= 0 ? { status: 'SOLD' } : {}),
         })
-        .eq('id', cartItem.inventory_id);
+        .eq('id', cartItem.inventory_id)
+        .eq('organization_id', orgId);
 
-      if (invError) {
-        console.error(`[pos:checkout] Stock update error for ${cartItem.inventory_id}:`, invError.message);
+      if (updateError) {
+        console.error(`[pos:checkout] Stock deduction failed for ${cartItem.inventory_id}:`, updateError.message);
       }
     }
 

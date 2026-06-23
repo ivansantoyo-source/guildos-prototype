@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isDemoMode } from '@/lib/toggles';
 import { phantomInventory } from '@/mocks/phantomData';
 import { withHardening } from '@/lib/auth/server-auth';
 import { VisionAppraiseSchema, validateBody } from '@/lib/validation/schemas';
@@ -51,7 +50,7 @@ export const POST = withHardening(
         platform = validation.data.platform ?? null;
       }
 
-      if (isDemoMode()) {
+      if (session.isDemo) {
         // Match against phantom data for realistic demo
         const match = itemName
           ? phantomInventory.find(

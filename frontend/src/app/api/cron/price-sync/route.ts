@@ -3,7 +3,7 @@ import { isDemoMode } from '@/lib/toggles';
 import { phantomBounties, phantomInventory } from '@/mocks/phantomData';
 import { shouldAutoFulfill } from '@/lib/arbitrage/engine';
 import { createClient } from '@/lib/supabase/server';
-import { fetchMarketPrice, bulkPriceCheck } from '@/lib/integrations/pricecharting';
+import { bulkPriceCheck } from '@/lib/integrations/pricecharting';
 
 /**
  * Vercel Cron — Daily Price Sync (04:00 UTC)
@@ -13,14 +13,13 @@ import { fetchMarketPrice, bulkPriceCheck } from '@/lib/integrations/pricecharti
  * Protected by CRON_SECRET authorization header (set automatically by Vercel Cron).
  */
 export async function GET(request?: NextRequest) {
-  // Auth: CRON_SECRET header check — FAILS CLOSED
-  // In production, CRON_SECRET MUST be set via `vercel env add CRON_SECRET production`
+  // Auth: CRON_SECRET header check — unconditional, fails closed
   const authHeader = request?.headers?.get('authorization');
   const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret || !authHeader || authHeader !== `Bearer ${cronSecret}`) {
-    if (!cronSecret) {
-      console.error('[cron/price-sync] CRON_SECRET not configured — run ABORTED. Set CRON_SECRET in Vercel env vars.');
-    }
+  if (!cronSecret) {
+    return NextResponse.json({ error: 'Cron not configured' }, { status: 500 });
+  }
+  if (authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -108,6 +107,14 @@ export async function GET(request?: NextRequest) {
 
     if (items.length > 0) {
       const priceMap = await bulkPriceCheck(items);
+      const now = new Date().toISOString();
+      const batchUpdates: Array<{
+        id: string;
+        market_value: number;
+        price_spike_flag: boolean;
+        last_price_sync: string;
+        updated_at: string;
+      }> = [];
 
       for (const invItem of inventoryItems || []) {
         const newPrice = priceMap.get(invItem.item_name);
@@ -117,17 +124,28 @@ export async function GET(request?: NextRequest) {
         const changePct = oldPrice > 0 ? ((newPrice - oldPrice) / oldPrice) * 100 : 0;
         const isSpike = Math.abs(changePct) >= 15;
 
-        await supabase
-          .from('inventory')
-          .update({
-            market_value: newPrice,
-            price_spike_flag: isSpike,
-            last_price_sync: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', invItem.id);
+        batchUpdates.push({
+          id: invItem.id,
+          market_value: newPrice,
+          price_spike_flag: isSpike,
+          last_price_sync: now,
+          updated_at: now,
+        });
 
         if (isSpike) spikesDetected++;
+      }
+
+      // Write in batches of 100 rows per query
+      const BATCH_SIZE = 100;
+      for (let i = 0; i < batchUpdates.length; i += BATCH_SIZE) {
+        const chunk = batchUpdates.slice(i, i + BATCH_SIZE);
+        const { error: upsertErr } = await supabase
+          .from('inventory')
+          .upsert(chunk, { onConflict: 'id' });
+
+        if (upsertErr) {
+          console.error(`[CRON:price-sync] Batch upsert error (offset ${i}):`, upsertErr);
+        }
       }
     }
 
@@ -143,40 +161,53 @@ export async function GET(request?: NextRequest) {
 
     const autoFulfilled: Array<{ id: string; item: string; marketPrice: number; triggerPrice: number }> = [];
 
-    for (const bounty of limitBuys || []) {
-      // Fetch current market price for this item
-      const priceData = await fetchMarketPrice(bounty.target_item_name, bounty.platform);
-      const currentMarketPrice = priceData.price;
+    if ((limitBuys || []).length > 0) {
+      // Batch-fetch market prices for all limit-buy targets in one call
+      const priceCheckItems = (limitBuys || []).map((b: Record<string, any>) => ({
+        name: b.target_item_name,
+        platform: b.platform,
+      }));
+      const marketPriceMap = await bulkPriceCheck(priceCheckItems);
+      const now = new Date().toISOString();
+      const fulfillmentIds: string[] = [];
 
-      if (shouldAutoFulfill(bounty, currentMarketPrice)) {
-        const tp = bounty.trigger_price ?? currentMarketPrice;
-        // Transition bounty to CLAIMED
-        const { error: updateErr } = await supabase
+      for (const bounty of limitBuys || []) {
+        const currentMarketPrice = marketPriceMap.get(bounty.target_item_name);
+        if (currentMarketPrice == null) continue;
+
+        if (shouldAutoFulfill(bounty, currentMarketPrice)) {
+          const tp = bounty.trigger_price ?? currentMarketPrice;
+          fulfillmentIds.push(bounty.id);
+
+          autoFulfilled.push({
+            id: bounty.id,
+            item: bounty.target_item_name,
+            marketPrice: currentMarketPrice,
+            triggerPrice: tp,
+          });
+
+          console.log(
+            `[CRON:price-sync:auto-fulfill] Bounty ${bounty.id} (${bounty.target_item_name}) ` +
+            `auto-fulfilled: market $${currentMarketPrice.toFixed(2)} ` +
+            `<= trigger $${tp.toFixed(2)}`
+          );
+        }
+      }
+
+      // Batch-update all fulfilled bounties
+      if (fulfillmentIds.length > 0) {
+        const { error: batchUpdateErr } = await supabase
           .from('bounties')
           .update({
             fulfillment_status: 'CLAIMED',
-            claimed_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
+            claimed_at: now,
+            updated_at: now,
           })
-          .eq('id', bounty.id);
+          .in('id', fulfillmentIds);
 
-        if (updateErr) {
-          console.error(`[CRON:price-sync:auto-fulfill] Failed to update ${bounty.id}:`, updateErr);
-          continue;
+        if (batchUpdateErr) {
+          console.error('[CRON:price-sync:auto-fulfill] Batch update error:', batchUpdateErr);
         }
-
-        autoFulfilled.push({
-          id: bounty.id,
-          item: bounty.target_item_name,
-          marketPrice: currentMarketPrice,
-          triggerPrice: tp,
-        });
-
-        console.log(
-          `[CRON:price-sync:auto-fulfill] Bounty ${bounty.id} (${bounty.target_item_name}) ` +
-          `auto-fulfilled: market $${currentMarketPrice.toFixed(2)} ` +
-          `<= trigger $${tp.toFixed(2)}`
-        );
       }
     }
 

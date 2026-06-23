@@ -2,17 +2,7 @@ import { NextRequest } from 'next/server';
 import Stripe from 'stripe';
 import { createClient } from '@/lib/supabase/server';
 import { rateLimit } from '@/lib/security/rate-limit';
-
-// Cache Stripe instance — avoid creating a new client on every webhook request
-let stripeInstance: Stripe | null = null;
-function getStripe(): Stripe {
-  if (!stripeInstance && process.env.STRIPE_SECRET_KEY) {
-    stripeInstance = new Stripe(process.env.STRIPE_SECRET_KEY, {
-      apiVersion: '2026-03-25.dahlia' as any,
-    });
-  }
-  return stripeInstance!;
-}
+import { getStripeClient } from '@/lib/integrations/stripe';
 
 /**
  * Stripe Webhook Handler
@@ -62,7 +52,7 @@ export async function POST(request: NextRequest) {
     // ======================================================================
     // Production — verify Stripe signature
     // ======================================================================
-    const stripe = getStripe();
+    const stripe = getStripeClient(process.env.STRIPE_SECRET_KEY);
 
     const event = stripe.webhooks.constructEvent(
       body,
@@ -109,6 +99,85 @@ export async function POST(request: NextRequest) {
               '[webhook:stripe] checkout.session.completed missing lobby participant metadata'
             );
           }
+          break;
+        }
+
+        // ================================================================
+        // Customer order checkout — deduct inventory stock for each item
+        // The checkout page creates the local order in Zustand on success
+        // redirect. This webhook ensures Supabase inventory stock_count is
+        // decremented server-side.
+        // ================================================================
+        if (session.metadata?.type === 'customer_order') {
+          const orgId = session.metadata.organization_id;
+          const customerName = session.metadata.customer_name;
+          const customerEmail = session.metadata.customer_email;
+
+          if (!orgId) {
+            console.warn(
+              '[webhook:stripe] customer_order missing organization_id'
+            );
+            break;
+          }
+
+          // Parse items from metadata (compact JSON)
+          let items: { i: string; q: number }[] = [];
+          if (session.metadata.items_json) {
+            try {
+              items = JSON.parse(session.metadata.items_json);
+            } catch {
+              console.warn(
+                '[webhook:stripe] Failed to parse customer_order items_json'
+              );
+            }
+          }
+
+          // Deduct stock for each purchased item
+          let deductedCount = 0;
+          for (const item of items) {
+            if (!item.i || item.q <= 0) continue;
+
+            const { data: invItem, error: fetchError } = await supabase
+              .from('inventory')
+              .select('stock_count, status')
+              .eq('id', item.i)
+              .eq('organization_id', orgId)
+              .single();
+
+            if (fetchError || !invItem) {
+              console.warn(
+                `[webhook:stripe] Inventory item ${item.i} not found — skipping`
+              );
+              continue;
+            }
+
+            const newStock = Math.max(0, invItem.stock_count - item.q);
+            const newStatus = newStock <= 0 ? 'SOLD' : invItem.status;
+
+            const { error: updateError } = await supabase
+              .from('inventory')
+              .update({
+                stock_count: newStock,
+                status: newStatus,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', item.i)
+              .eq('organization_id', orgId);
+
+            if (updateError) {
+              console.error(
+                `[webhook:stripe] Stock update error for ${item.i}: ${updateError.message}`
+              );
+            } else {
+              deductedCount++;
+            }
+          }
+
+          console.log(
+            `[webhook:stripe] Customer order processed — ${customerName} (${customerEmail}), ` +
+              `${deductedCount}/${items.length} items stock deducted, ` +
+              `session ${session.id}`
+          );
           break;
         }
 
@@ -329,7 +398,7 @@ export async function POST(request: NextRequest) {
       error instanceof Error ? error.message : 'Unknown error';
     console.error('[webhook:stripe] Error:', message);
     return Response.json(
-      { error: 'Webhook processing failed', detail: message },
+      { error: 'Webhook processing failed' },
       { status: 400 }
     );
   }

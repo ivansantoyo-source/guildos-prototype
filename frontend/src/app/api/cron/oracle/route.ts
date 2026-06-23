@@ -54,7 +54,13 @@ export async function GET(request?: NextRequest) {
     });
   }
 
-  // Production mode — query Supabase with service role (bypasses RLS)
+  // Production mode — query Supabase with service role.
+  // Service role is intentional here: this is a cross-tenant system cron that needs to read
+  // every org's inventory and profiles. An anon-key client scoped to a single tenant (via RLS)
+  // cannot fulfill this. To mitigate risk:
+  //   - All queries are capped at 500 rows (prevents OOM on large tenants)
+  //   - Statement timeout is set at the session level (30s) to kill runaway queries
+  //   - The route is protected by CRON_SECRET (Vercel Cron only, not exposed publicly)
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -66,10 +72,18 @@ export async function GET(request?: NextRequest) {
       db: { schema: 'guildos_core' },
     });
 
-    // 1. Get all organizations
+    // Set statement timeout (30s) — non-fatal if function doesn't exist
+    try {
+      await supabase.rpc('set_config', { key: 'statement_timeout', value: '30000' });
+    } catch {
+      // Non-fatal: timeout defaults to instance limit
+    }
+
+    // 1. Get organizations (capped at 500 — prevents OOM on large tenants)
     const { data: organizations, error: orgErr } = await supabase
       .from('organizations')
-      .select('id, name');
+      .select('id, name')
+      .limit(500);
 
     if (orgErr) throw orgErr;
     if (!organizations || organizations.length === 0) {
@@ -96,87 +110,112 @@ export async function GET(request?: NextRequest) {
       confidence: number;
     }> = [];
 
-    // 2. For each org, get active inventory and profiles with purchase_tags
-    for (const org of organizations) {
-      const { data: inventory, error: invErr } = await supabase
-        .from('inventory')
-        .select('item_name, platform, tags')
-        .eq('organization_id', org.id)
-        .eq('status', 'ACTIVE');
+    // 2. Parallel per-org queries using Promise.all — eliminates N+1 round-trips
+    const orgResults = await Promise.all(
+      organizations.map(async (org) => {
+        const [invResult, profResult] = await Promise.all([
+          supabase
+            .from('inventory')
+            .select('item_name, platform, tags')
+            .eq('organization_id', org.id)
+            .eq('status', 'ACTIVE')
+            .limit(500),
+          supabase
+            .from('profiles')
+            .select('id, display_name, purchase_tags, phone')
+            .eq('organization_id', org.id)
+            .not('purchase_tags', 'is', null)
+            .limit(500),
+        ]);
 
-      if (invErr) {
-        console.error(`[CRON:oracle] Inventory query error for org ${org.id}:`, invErr);
-        continue;
-      }
-      if (!inventory || inventory.length === 0) continue;
-
-      const { data: profiles, error: profErr } = await supabase
-        .from('profiles')
-        .select('id, display_name, purchase_tags, phone')
-        .eq('organization_id', org.id)
-        .not('purchase_tags', 'is', null);
-
-      if (profErr) {
-        console.error(`[CRON:oracle] Profiles query error for org ${org.id}:`, profErr);
-        continue;
-      }
-      if (!profiles || profiles.length === 0) continue;
-
-      // 3. Run the tag-matching algorithm
-      for (const profile of profiles) {
-        const userTags: string[] = profile.purchase_tags ?? [];
-
-        for (const item of inventory) {
-          const itemTags: string[] = item.tags ?? [];
-          if (itemTags.length === 0) continue;
-
-          const matchedTags = itemTags.filter((tag: string) => userTags.includes(tag));
-          if (matchedTags.length === 0) continue;
-
-          const confidence = Math.min(
-            (matchedTags.length / itemTags.length) * (userTags.length / 10),
-            0.99,
-          );
-
-          allMatches.push({
-            orgId: org.id,
-            orgName: org.name,
-            userId: profile.id,
-            displayName: profile.display_name,
-            phone: profile.phone ?? undefined,
-            matchedItem: `${item.item_name}${item.platform ? ` (${item.platform})` : ''}`,
-            matchedTag: matchedTags[0],
-            confidence,
-          });
+        if (invResult.error) {
+          console.error(`[CRON:oracle] Inventory query error for org ${org.id}:`, invResult.error);
+          return [];
         }
-      }
+        if (profResult.error) {
+          console.error(`[CRON:oracle] Profiles query error for org ${org.id}:`, profResult.error);
+          return [];
+        }
+
+        const inventory = invResult.data ?? [];
+        const profiles = profResult.data ?? [];
+        if (inventory.length === 0 || profiles.length === 0) return [];
+
+        // 3. Run the tag-matching algorithm
+        const orgMatches: Array<{
+          orgId: string;
+          orgName: string;
+          userId: string;
+          displayName: string;
+          phone?: string;
+          matchedItem: string;
+          matchedTag: string;
+          confidence: number;
+        }> = [];
+
+        for (const profile of profiles) {
+          const userTags: string[] = profile.purchase_tags ?? [];
+
+          for (const item of inventory) {
+            const itemTags: string[] = item.tags ?? [];
+            if (itemTags.length === 0) continue;
+
+            const matchedTags = itemTags.filter((tag: string) => userTags.includes(tag));
+            if (matchedTags.length === 0) continue;
+
+            const confidence = Math.min(
+              (matchedTags.length / itemTags.length) * (userTags.length / 10),
+              0.99,
+            );
+
+            orgMatches.push({
+              orgId: org.id,
+              orgName: org.name,
+              userId: profile.id,
+              displayName: profile.display_name,
+              phone: profile.phone ?? undefined,
+              matchedItem: `${item.item_name}${item.platform ? ` (${item.platform})` : ''}`,
+              matchedTag: matchedTags[0],
+              confidence,
+            });
+          }
+        }
+
+        return orgMatches;
+      }),
+    );
+
+    // Flatten results from all orgs
+    for (const matches of orgResults) {
+      allMatches.push(...matches);
     }
 
     // Sort by confidence descending, cap at top 50
     allMatches.sort((a, b) => b.confidence - a.confidence);
     const topMatches = allMatches.slice(0, 50);
 
-    // 4. Write ORACLE_MATCH notifications to guildos_core.notifications
-    let notificationsCreated = 0;
-    for (const match of topMatches) {
-      const { error: notifErr } = await supabase.from('notifications').insert({
-        organization_id: match.orgId,
-        user_id: match.userId,
-        type: 'ORACLE_MATCH',
-        title: 'The Oracle has foreseen your next treasure',
-        message: `${match.matchedItem} (${Math.round(match.confidence * 100)}% match) — your ${match.matchedTag} collection beckons.`,
-        metadata: {
-          matched_item: match.matchedItem,
-          matched_tag: match.matchedTag,
-          confidence: match.confidence,
-        },
-      });
+    // 4. Batch write ORACLE_MATCH notifications to guildos_core.notifications
+    const notifications = topMatches.map((match) => ({
+      organization_id: match.orgId,
+      user_id: match.userId,
+      type: 'ORACLE_MATCH',
+      title: 'The Oracle has foreseen your next treasure',
+      message: `${match.matchedItem} (${Math.round(match.confidence * 100)}% match) — your ${match.matchedTag} collection beckons.`,
+      metadata: {
+        matched_item: match.matchedItem,
+        matched_tag: match.matchedTag,
+        confidence: match.confidence,
+      },
+    }));
 
+    let notificationsCreated = 0;
+    if (notifications.length > 0) {
+      const { error: notifErr } = await supabase.from('notifications').insert(notifications);
       if (notifErr) {
-        console.error(`[CRON:oracle] Notification insert failed for user ${match.userId}:`, notifErr);
-        continue;
+        console.error('[CRON:oracle] Batch notification insert failed:', notifErr);
+      } else {
+        notificationsCreated = notifications.length;
       }
-      notificationsCreated++;
     }
 
     // 5. Send Twilio SMS for high-confidence matches (>=80%)

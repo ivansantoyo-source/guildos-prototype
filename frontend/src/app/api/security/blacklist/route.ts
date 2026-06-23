@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { withHardening, ValidatedNextRequest } from '@/lib/auth/server-auth';
@@ -23,19 +23,11 @@ const demoBlacklist: Array<{
 // Register a fraud/theft entry. The system hashes the suspect's ID metadata
 // and broadcasts to all tenants within a 100-mile radius.
 //
-// Restricted to admin/owner. Additional verification via
-// BLACKLIST_VERIFICATION_KEY header for cross-tenant sharing.
+// Restricted to admin/owner via withHardening role check.
 // ============================================================================
 export const POST = withHardening(
   async (req, session) => {
     const data = (req as ValidatedNextRequest<z.infer<typeof BlacklistEntrySchema>>).validatedData;
-
-    // Additional verification key check (legacy cross-tenant auth layer)
-    const authHeader = req.headers.get('authorization');
-    const verificationKey = process.env.BLACKLIST_VERIFICATION_KEY;
-    if (verificationKey && authHeader !== `Bearer ${verificationKey}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
 
     const { suspect_hash, incident_type, description, geo_lat, geo_lng } = data;
 
@@ -140,6 +132,7 @@ export const GET = withHardening(
     return NextResponse.json({ data: data ?? [], count: count ?? 0 });
   },
   {
+    roles: ['admin', 'owner'],
     rateLimit: { key: 'security-blacklist-read', maxRequests: 60, windowMs: 60_000 },
   }
 );

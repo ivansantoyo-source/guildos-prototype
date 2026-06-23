@@ -73,6 +73,9 @@ export async function proxy(request: NextRequest) {
   if (!isDemoRequest && supabaseUrl && supabaseAnonKey) {
     try {
       const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+        db: {
+          schema: 'guildos_core',
+        },
         cookies: {
           getAll() {
             return request.cookies.getAll();
@@ -172,11 +175,16 @@ export async function proxy(request: NextRequest) {
   response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
 
   if (process.env.NODE_ENV === 'production') {
+    // Generate a unique cryptographic nonce per request for strict CSP
+    // This allows Next.js inline scripts while blocking all other inline/eval'd code
+    const nonce = crypto.randomUUID();
+    response.headers.set('x-nonce', nonce);
+
     response.headers.set('X-Demo-Mode', isDemoRequest ? 'true' : 'false');
     response.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
     response.headers.set(
       'Content-Security-Policy',
-      "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://*.supabase.co https://api.nvidia.com; frame-src 'self' https://*.stripe.com; report-uri /api/security/csp-report"
+      `default-src 'self'; script-src 'self' 'nonce-${nonce}' https://js.stripe.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://*.supabase.co https://api.nvidia.com; frame-src 'self' https://*.stripe.com; report-uri /api/security/csp-report`
     );
   }
 

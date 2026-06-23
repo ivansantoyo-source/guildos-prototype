@@ -1,14 +1,20 @@
 // ============================================================================
-// GUILDOS — Distributed Rate Limiter (Vercel KV + In-Memory Fallback)
+// GUILDOS — Distributed Rate Limiter (Vercel KV/Upstash + In-Memory Fallback)
 //
-// Primary: Vercel KV (shared across serverless instances, survives cold starts)
-// Fallback: In-memory Map (dev/test, no KV credentials configured)
+// Primary: Vercel KV via Upstash Redis (shared across serverless instances)
+// Fallback 1: Direct Upstash Redis via REDIS_URL env var (auto-configured)
+// Fallback 2: In-memory Map (local dev, no Redis credentials configured)
+//
+// Configuration priority (first wins):
+//   1. KV_URL + KV_REST_API_URL + KV_REST_API_TOKEN (Vercel KV integration)
+//   2. REDIS_URL (Upstash Redis, auto-parsed to KV REST credentials)
+//   3. In-memory fallback (per-instance only, logged as WARN)
 //
 // *** SECURITY WARNING ***
 // The in-memory fallback is per-Vercel-serverless-instance, NOT shared.
 // Multiple concurrent instances each have their own counter, allowing
 // attackers to bypass rate limits by spraying requests across instances.
-// In production, always configure Vercel KV for proper distributed limits.
+// In production, always configure Vercel KV or ensure REDIS_URL is set.
 //
 // Uses a sliding window algorithm with KV:
 //   - Key pattern: ratelimit:{key}:{timestamp_bucket}
@@ -67,12 +73,49 @@ if (typeof setInterval !== 'undefined') {
 // ============================================================================
 
 function isKvConfigured(): boolean {
-  return !!(
-    process.env.KV_URL &&
-    process.env.KV_REST_API_URL &&
-    process.env.KV_REST_API_TOKEN
-  );
+  // Direct Vercel KV configuration
+  if (process.env.KV_URL && process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
+    return true;
+  }
+  // REDIS_URL fallback — same Upstash Redis instance, already set in Vercel Production
+  // This is the same Redis that Vercel KV provisions under the hood.
+  if (process.env.REDIS_URL) {
+    return true;
+  }
+  return false;
 }
+
+/**
+ * Auto-derive KV REST credentials from REDIS_URL at module load time.
+ * REDIS_URL uses the format: rediss://default:<token>@<host>:6379
+ * This lets the @vercel/kv proxy use the same Upstash instance as Vercel KV
+ * when only REDIS_URL is available (e.g., preview/development environments).
+ */
+function autoConfigureFromRedisUrl(): void {
+  const redisUrl = process.env.REDIS_URL;
+  if (!redisUrl) return;
+
+  // Only set KV vars if at least one is missing — explicit config takes priority
+  if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) return;
+
+  try {
+    const parsed = new URL(redisUrl);
+    const host = parsed.hostname;
+    const token = parsed.password;
+    if (host && token) {
+      process.env.KV_REST_API_URL = `https://${host}`;
+      process.env.KV_REST_API_TOKEN = token;
+      if (!process.env.KV_URL) {
+        process.env.KV_URL = redisUrl;
+      }
+    }
+  } catch {
+    // Ignore parse errors — the in-memory fallback will be used
+  }
+}
+
+// Run auto-configuration immediately so @vercel/kv's lazy proxy picks it up
+autoConfigureFromRedisUrl();
 
 // ============================================================================
 // Production KV Enforcement Check
@@ -84,11 +127,12 @@ function isKvConfigured(): boolean {
 function checkProductionKv(): void {
   if (process.env.NODE_ENV === 'production' && !isKvConfigured()) {
     console.error(
-      '[rate-limit] CRITICAL: Vercel KV is not configured in production. ' +
+      '[rate-limit] CRITICAL: No Redis/KV configuration found in production. ' +
       'Rate limiting falls back to per-instance in-memory storage, which is ' +
       'ineffective on Vercel serverless. Attackers can bypass limits by ' +
-      'spraying requests across instances. Set KV_URL, KV_REST_API_URL, and ' +
-      'KV_REST_API_TOKEN environment variables.',
+      'spraying requests across instances. ' +
+      'Set KV_URL + KV_REST_API_URL + KV_REST_API_TOKEN (Vercel KV), ' +
+      'or set REDIS_URL (Upstash Redis) for distributed rate limiting.',
     );
   }
 }
@@ -100,10 +144,11 @@ checkProductionKv();
 if (!isKvConfigured()) {
   warnOnce(
     'no-kv-configured',
-    'Vercel KV is not configured. Rate limiting uses per-instance in-memory ' +
+    'No distributed Redis/KV configured. Rate limiting uses per-instance in-memory ' +
     'fallback — ineffective on Vercel serverless. Attackers can bypass by ' +
     'spraying requests across instances. ' +
-    'Set KV_URL, KV_REST_API_URL, and KV_REST_API_TOKEN for distributed limiting.',
+    'Set KV_URL, KV_REST_API_URL, KV_REST_API_TOKEN (Vercel KV) ' +
+    'or REDIS_URL (Upstash) for distributed limiting.',
   );
 }
 
@@ -271,9 +316,9 @@ export async function rateLimit(key: string, opts: RateLimitOptions): Promise<bo
 
   warnOnce(
     'in-memory-fallback',
-    `Using in-memory rate limiter (key="${key}"). Vercel KV not configured. ` +
+    `Using in-memory rate limiter (key="${key}"). No distributed Redis/KV configured. ` +
     'Rate limits are PER-INSTANCE only — ineffective on Vercel serverless. ' +
-    'Set KV_URL, KV_REST_API_URL, and KV_REST_API_TOKEN for proper distributed limiting.',
+    'Set KV_URL + KV_REST_API_URL + KV_REST_API_TOKEN or REDIS_URL.',
   );
 
   return checkMemoryLimit(key, opts);
@@ -300,7 +345,7 @@ export async function getRateLimitRemaining(key: string, opts: RateLimitOptions)
 
   warnOnce(
     'in-memory-fallback-remaining',
-    'getRateLimitRemaining using in-memory fallback (Vercel KV not configured). ' +
+    'getRateLimitRemaining using in-memory fallback. No distributed Redis/KV configured. ' +
     'Remaining count is per-instance only.',
   );
 

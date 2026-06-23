@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { useGuildStore } from "@/lib/store/useGuildStore";
@@ -72,67 +72,170 @@ export default function CheckoutPage({ params }: { params: { tenant: string } })
   const updateInventoryItem = useGuildStore((s) => s.updateInventoryItem);
   const hasEnoughCredit = wallet ? wallet.balance >= estimatedTotal : false;
 
-  const handlePlaceOrder = () => {
+  const createLocalOrder = useCallback((sessionId: string) => {
+    if (!cart) return null;
+    const orderId = `ORD-${Date.now().toString(36).toUpperCase()}-${sessionId.slice(-4).toUpperCase()}`;
+
+    const orderItems: OrderItem[] = cart.items.map((ci) => ({
+      id: `oi-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      order_id: orderId,
+      inventory_id: ci.inventory_id,
+      item_name: ci.item_name,
+      platform: ci.platform,
+      price: ci.price,
+      quantity: ci.quantity,
+      tags: ci.tags,
+    }));
+
+    return {
+      id: orderId,
+      organization_id: cart.organization_id,
+      profile_id: `customer-${Date.now()}`,
+      items: orderItems,
+      subtotal: cart.subtotal,
+      discount_amount: cart.discount_amount,
+      tax_amount: taxEstimate,
+      total: estimatedTotal,
+      status: "CONFIRMED" as const,
+      payment_method: paymentMethod,
+      payment_status: "PAID" as const,
+      stripe_payment_intent_id: sessionId,
+      customer_notes: orderNotes || undefined,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  }, [cart, paymentMethod, taxEstimate, estimatedTotal, orderNotes]);
+
+  // Handle Stripe redirect-back via useEffect (runs once on mount).
+  // Uses a ref to prevent double-processing on strict mode re-renders.
+  const stripeRedirectProcessed = useRef(false);
+  useEffect(() => {
+    if (stripeRedirectProcessed.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const checkoutStatus = params.get("checkout");
+    const sessionId = params.get("session_id");
+
+    if (checkoutStatus === "success" && sessionId && cart && !orderConfirmed) {
+      stripeRedirectProcessed.current = true;
+      const order = createLocalOrder(sessionId);
+      if (!order) return;
+
+      // Deduct stock for each purchased item (client-side)
+      for (const item of cart.items) {
+        const currentStock = (item as any).stock_count ?? 1;
+        updateInventoryItem(item.inventory_id, {
+          stock_count: Math.max(0, currentStock - item.quantity),
+          status: currentStock - item.quantity <= 0 ? 'SOLD' as const : 'ACTIVE' as const,
+        });
+      }
+
+      addCustomerOrder(order);
+
+      useGuildStore.getState().clearCart();
+
+      setConfirmedOrderId(order.id);
+      setOrderConfirmed(true);
+      setShowConfetti(true);
+      clearCart();
+
+      // Clean URL — remove query params
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (checkoutStatus === "cancelled") {
+      stripeRedirectProcessed.current = true;
+      // Clean URL
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []); // Run once on mount only — captures initial Zustand state
+
+  const handlePlaceOrder = async () => {
     if (!cart || !customerName.trim() || !customerEmail.trim()) return;
 
     setIsPlacing(true);
 
-    // Place order with stock deduction — prevents overselling
-    setTimeout(() => {
-      const orderId = `ORD-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
-
-      const orderItems: OrderItem[] = cart.items.map((ci) => ({
-        id: `oi-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        order_id: orderId,
-        inventory_id: ci.inventory_id,
-        item_name: ci.item_name,
-        platform: ci.platform,
-        price: ci.price,
-        quantity: ci.quantity,
-        tags: ci.tags,
-      }));
+    // ==================================================================
+    // STORE CREDIT — process locally (no Stripe needed)
+    // ==================================================================
+    if (paymentMethod === "STORE_CREDIT") {
+      const order = createLocalOrder(`store_credit_${Date.now()}`);
+      if (!order) {
+        setIsPlacing(false);
+        return;
+      }
 
       // Deduct stock for each purchased item
       for (const item of cart.items) {
+        const currentStock = (item as any).stock_count ?? 1;
         updateInventoryItem(item.inventory_id, {
-          stock_count: Math.max(0, (item as any).stock_count ?? 1 - item.quantity),
-          status: ((item as any).stock_count ?? 1) - item.quantity <= 0 ? 'SOLD' as const : 'ACTIVE' as const,
+          stock_count: Math.max(0, currentStock - item.quantity),
+          status: currentStock - item.quantity <= 0 ? 'SOLD' as const : 'ACTIVE' as const,
         });
       }
 
-      const newOrder: Order = {
-        id: orderId,
-        organization_id: cart.organization_id,
-        profile_id: `customer-${Date.now()}`,
-        items: orderItems,
-        subtotal: cart.subtotal,
-        discount_amount: cart.discount_amount,
-        tax_amount: taxEstimate,
-        total: estimatedTotal,
-        status: "CONFIRMED",
-        payment_method: paymentMethod,
-        payment_status: paymentMethod === "STORE_CREDIT" ? "PAID" : "PAID",
-        customer_notes: orderNotes || undefined,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
+      addCustomerOrder(order);
 
-      addCustomerOrder(newOrder);
-
-      // Apply store credit if that payment method
-      if (paymentMethod === "STORE_CREDIT" && hasEnoughCredit) {
+      if (hasEnoughCredit) {
         applyStoreCredit(estimatedTotal);
       }
 
-      // Clear cart after successful order
       useGuildStore.getState().clearCart();
 
-      setConfirmedOrderId(orderId);
+      setConfirmedOrderId(order.id);
       setOrderConfirmed(true);
       setShowConfetti(true);
       setIsPlacing(false);
       clearCart();
-    }, 1500);
+      return;
+    }
+
+    // ==================================================================
+    // STRIPE — create Checkout Session via API, then redirect
+    // ==================================================================
+    try {
+      const res = await fetch("/api/payments/create-checkout-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organization_id: cart.organization_id,
+          items: cart.items.map((ci) => ({
+            inventory_id: ci.inventory_id,
+            item_name: ci.item_name,
+            platform: ci.platform,
+            price: ci.price,
+            quantity: ci.quantity,
+          })),
+          customer_name: customerName.trim(),
+          customer_email: customerEmail.trim(),
+          customer_phone: customerPhone.trim() || undefined,
+          order_notes: orderNotes.trim() || undefined,
+          tenant,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        console.error("[checkout] Create session error:", err.error || err);
+        setIsPlacing(false);
+        // Show error to user
+        alert(err.error || "Payment could not be initiated. Please try again.");
+        return;
+      }
+
+      const data = await res.json();
+
+      if (!data.url) {
+        console.error("[checkout] No URL returned from API");
+        setIsPlacing(false);
+        alert("Payment could not be initiated. Please try again.");
+        return;
+      }
+
+      // Redirect to Stripe Checkout
+      window.location.href = data.url;
+    } catch (error) {
+      console.error("[checkout] Error creating Stripe session:", error);
+      setIsPlacing(false);
+      alert("An unexpected error occurred. Please try again.");
+    }
   };
 
   // Already confirmed — show success screen

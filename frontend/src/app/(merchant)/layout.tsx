@@ -99,24 +99,9 @@ function StaminaBarWrapper() {
   );
 }
 
-export default function MerchantLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const pathname = usePathname();
-  const setDemoMode = useGuildStore((s) => s.setDemoMode);
-  const sidebarCollapsed = useGuildStore((s) => s.sidebarCollapsed);
-  const sidebarHidden = useGuildStore((s) => s.sidebarHidden);
-  const toggleSidebar = useGuildStore((s) => s.toggleSidebar);
-  const setSidebarHidden = useGuildStore((s) => s.setSidebarHidden);
-  const setActiveModule = useGuildStore((s) => s.setActiveModule);
+// ── Demo data loader: isolates phantom-data hydration to a single effect ──
+function DemoDataLoader() {
   const demoMode = useGuildStore((s) => s.demoMode);
-  const notifications = useGuildStore((s) => s.notifications);
-  const unreadCount = notifications.filter((n) => !n.read_at).length;
-  const reducedMotion = useGuildStore((s) => s.reducedMotion);
-
-  // Load phantom data in demo mode
   const setInventory = useGuildStore((s) => s.setInventory);
   const setBounties = useGuildStore((s) => s.setBounties);
   const setLfgLobbies = useGuildStore((s) => s.setLfgLobbies);
@@ -166,7 +151,27 @@ export default function MerchantLayout({
       setStaminaVal(72);
       useGuildStore.setState({ maxStamina: 100, consecutiveHours: 1.5, lastActivityAt: new Date().toISOString() });
     }
-  }, [demoMode, setInventory, setBounties, setLfgLobbies, setScoreboards, setFactionStandings, setDashboardStats, setActivityFeed, setNotifications, setVitalityQuests, setStations, setStaminaVal, setStationBookings, setWallet, setWalletTransactions, setPotionsMenu, setPotionOrders, setCustomerOrders, setPOSSession, setAgentSession, setStorefrontConfig]);
+  }, [demoMode]);
+
+  return null;
+}
+
+export default function MerchantLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const pathname = usePathname();
+  const setDemoMode = useGuildStore((s) => s.setDemoMode);
+  const sidebarCollapsed = useGuildStore((s) => s.sidebarCollapsed);
+  const sidebarHidden = useGuildStore((s) => s.sidebarHidden);
+  const toggleSidebar = useGuildStore((s) => s.toggleSidebar);
+  const setSidebarHidden = useGuildStore((s) => s.setSidebarHidden);
+  const setActiveModule = useGuildStore((s) => s.setActiveModule);
+  const demoMode = useGuildStore((s) => s.demoMode);
+  const notifications = useGuildStore((s) => s.notifications);
+  const unreadCount = notifications.filter((n) => !n.read_at).length;
+  const reducedMotion = useGuildStore((s) => s.reducedMotion);
 
   // Stamina tick interval — recalculate every 5 minutes
   useEffect(() => {
@@ -247,6 +252,9 @@ export default function MerchantLayout({
 
   return (
     <div className="min-h-screen bg-background text-foreground font-mono flex relative bg-dot-grid-subtle">
+      {/* Demo data hydration (invisible) */}
+      <DemoDataLoader />
+
       {/* === MOVING GRADIENT BACKGROUND === */}
       <div className="fixed inset-0 bg-gradient-move pointer-events-none -z-10" />
 

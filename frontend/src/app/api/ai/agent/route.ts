@@ -7,8 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { runAgentLoop } from '@/lib/ai/agent';
-import { getServerSession } from '@/lib/auth/server-auth';
-import { isDemoModeServer } from '@/lib/toggles/server';
+import { withHardening } from '@/lib/auth/server-auth';
 import type { AgentMessage } from '@/lib/types';
 
 const AgentQuerySchema = z.object({
@@ -30,52 +29,8 @@ const AgentQuerySchema = z.object({
   stream: z.boolean().optional().default(false),
 });
 
-// In-memory rate limiting
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-const RATE_LIMIT_MAX = 20;
-const RATE_LIMIT_WINDOW = 60_000;
-
-function checkRateLimit(identifier: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(identifier);
-
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(identifier, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
-    return true;
-  }
-
-  if (entry.count >= RATE_LIMIT_MAX) {
-    return false;
-  }
-
-  entry.count++;
-  return true;
-}
-
-export async function POST(request: NextRequest) {
-  // Demo mode detection
-  const searchParams = request.nextUrl.searchParams;
-  const isDemo = await isDemoModeServer(searchParams);
-
-  // Rate limit
-  const ip = request.headers.get('x-forwarded-for') || 'unknown';
-  const ua = request.headers.get('user-agent') || 'unknown';
-  const rateLimitKey = `${ip}:${ua.slice(0, 32)}`;
-
-  if (!checkRateLimit(rateLimitKey)) {
-    return NextResponse.json(
-      { error: 'Rate limit exceeded. Try again shortly.' },
-      { status: 429 }
-    );
-  }
-
-  // Auth gate — skip in demo mode
-  if (!isDemo) {
-    const session = await getServerSession(request);
-    if (!session) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
-  }
+export const POST = withHardening(
+  async (request, session) => {
 
   try {
     const body = await request.json();
@@ -132,15 +87,17 @@ export async function POST(request: NextRequest) {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'done' })}\n\n`));
             controller.close();
           } catch (error) {
+            console.error('[ai/agent] SSE stream error:', error);
             controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ type: 'error', error: String(error) })}\n\n`)
+              encoder.encode(`data: ${JSON.stringify({ type: 'error', error: 'Processing failed' })}\n\n`)
             );
             controller.close();
           }
         },
       });
 
-      return new Response(readable, {
+      return new NextResponse(readable, {
+        status: 200,
         headers: {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',
@@ -170,30 +127,39 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+  },
+  {
+    rateLimit: { key: 'ai-agent', maxRequests: 20, windowMs: 60_000 },
+  }
+);
 
-// GET — health check + available tools
-export async function GET() {
-  const { getToolDefinitions } = await import('@/lib/ai/tools');
-  const tools = getToolDefinitions();
+// GET — health check + available tools (requires auth)
+export const GET = withHardening(
+  async (req, session) => {
+    const { getToolDefinitions } = await import('@/lib/ai/tools');
+    const tools = getToolDefinitions();
 
-  return NextResponse.json({
-    status: 'operational',
-    mode: process.env.NVIDIA_NIM_API_KEY ? 'live' : 'demo',
-    available_tools: tools.map((t) => ({
-      name: t.name,
-      description: t.description,
-      category: t.category,
-    })),
-    tool_count: tools.length,
-    capabilities: [
-      'inventory_search',
-      'bounty_management',
-      'order_tracking',
-      'market_pricing',
-      'customer_lookup',
-      'store_analytics',
-      'product_recommendations',
-    ],
-  });
-}
+    return NextResponse.json({
+      status: 'operational',
+      mode: process.env.NVIDIA_NIM_API_KEY ? 'live' : 'demo',
+      available_tools: tools.map((t) => ({
+        name: t.name,
+        description: t.description,
+        category: t.category,
+      })),
+      tool_count: tools.length,
+      capabilities: [
+        'inventory_search',
+        'bounty_management',
+        'order_tracking',
+        'market_pricing',
+        'customer_lookup',
+        'store_analytics',
+        'product_recommendations',
+      ],
+    });
+  },
+  {
+    rateLimit: { key: 'ai-agent-health', maxRequests: 30, windowMs: 60_000 },
+  }
+);

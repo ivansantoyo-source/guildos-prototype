@@ -46,8 +46,8 @@ if not DB_PASSWORD:
     print("ERROR: SUPABASE_SERVICE_ROLE_KEY not found in .env.local")
     sys.exit(1)
 
-# Read the migration SQL
-SCHEMA_FILE = os.path.join(os.path.dirname(__file__), '..', 'schema.sql')
+# Read the migration SQL (canonical source: supabase/migrations/)
+SCHEMA_FILE = os.path.join(os.path.dirname(__file__), '..', 'supabase', 'migrations', '0000_initial_schema.sql')
 with open(SCHEMA_FILE) as f:
     schema_sql = f.read()
 

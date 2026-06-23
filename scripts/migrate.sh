@@ -34,7 +34,7 @@ echo -e "\n${YELLOW}Target DB:${NC} ${NEXT_PUBLIC_SUPABASE_URL}"
 echo -e "${YELLOW}Schema:${NC} guildos_core"
 
 # Determine the migration SQL file
-MIGRATION_FILE="${1:-schema.sql}"
+MIGRATION_FILE="${1:-supabase/migrations/0000_initial_schema.sql}"
 if [ ! -f "$MIGRATION_FILE" ]; then
   MIGRATION_FILE="$(dirname "$0")/../$MIGRATION_FILE"
 fi
