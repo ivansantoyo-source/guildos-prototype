@@ -66,6 +66,11 @@
 
 | Issue | Severity | Notes |
 |-------|----------|-------|
+| ~~Demo mode nav redirects to login~~ | ~~Critical~~ | ✅ FIXED 2026-06-22 — see `fix/demo-mode-navigation` branch |
+| ~~API routes always return phantom data~~ | ~~Critical~~ | ✅ FIXED 2026-06-22 — inventory, bounties, nexus routes now check demo mode |
+| ~~Missing ?demo=true on internal links~~ | ~~Critical~~ | ✅ FIXED 2026-06-22 — centralized `demoHref()` utility in `lib/utils/url.ts` |
+| ~~Proxy demo detection fragile~~ | ~~High~~ | ✅ FIXED 2026-06-22 — proxy v2.1 with explicit priority chain |
+| Deploy pending | High | `fix/demo-mode-navigation` branch needs merge → `main` + Vercel deploy |
 | No real Supabase Auth users | Medium | Login works in demo; production needs real auth flow testing |
 | No Stripe live test | Medium | BYO keys configured but no test transaction run |
 | No Twilio live test | Medium | SMS integration not end-to-end tested |
@@ -77,11 +82,36 @@
 
 ---
 
+## Latest Changes (2026-06-22)
+
+### Demo Mode Root Cause Fix
+**Problem:** Clicking any tab in demo mode redirected to `/login`.
+**Root cause:** Next.js client-side navigations don't go through proxy middleware. Every internal `href` must include `?demo=true`. Only sidebar/mobile nav did this — QuickActions, breadcrumbs, EmptyState CTAs all had bare hrefs.
+**Fix:** Created `lib/utils/url.ts` with centralized `demoHref()` function. All components now use it. Also created `<DemoAwareLink>` component.
+
+### API Route Production Hardening
+**Problem:** 4 API routes (`inventory`, `bounties`, `nexus/lfg`, `nexus/scores`) ALWAYS returned phantom data — never checked demo mode. Production would serve fake data.
+**Fix:** All routes now check `isDemoModeServer()` and query Supabase `guildos_core` in production mode.
+
+### New Files Created
+- `frontend/src/lib/utils/url.ts` — `demoHref()` utility + `isCurrentlyDemoMode()` + `persistDemoMode()`
+- `frontend/src/components/ui/demo-aware-link.tsx` — `<DemoAwareLink>` drop-in for `next/link`
+- `frontend/src/components/widgets/demo-banner.tsx` — Interactive rotating tips banner
+
+### Deploy Instructions
+```bash
+cd /Users/vanguardestatecontrols/GuildOS/frontend && vercel deploy --prod --yes --scope vec717
+# Then merge: git checkout main && git merge fix/demo-mode-navigation && git push origin main
+```
+
+---
+
 ## Next Phase: Real Merchant Onboarding
 
-1. Test real Supabase Auth (sign up → email verify → faction select → dashboard)
-2. Configure a test Stripe account and process a test subscription
-3. Configure a test Twilio account and send a test SMS
-4. Write Playwright e2e tests for critical paths (login → dashboard → scan item → post bounty)
-5. Add real-time Supabase Realtime subscriptions for live dashboard updates
-6. Custom domain setup for tenant subdomains
+1. **MERGE + DEPLOY** `fix/demo-mode-navigation` branch (CRITICAL — fixes in this branch)
+2. Test real Supabase Auth (sign up → email verify → faction select → dashboard)
+3. Configure a test Stripe account and process a test subscription
+4. Configure a test Twilio account and send a test SMS
+5. Write Playwright e2e tests for critical paths (login → dashboard → scan item → post bounty)
+6. Add real-time Supabase Realtime subscriptions for live dashboard updates
+7. Custom domain setup for tenant subdomains
