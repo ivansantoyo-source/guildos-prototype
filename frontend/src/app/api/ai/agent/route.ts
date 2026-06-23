@@ -7,6 +7,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { runAgentLoop } from '@/lib/ai/agent';
+import { getServerSession } from '@/lib/auth/server-auth';
+import { isDemoModeServer } from '@/lib/toggles/server';
 import type { AgentMessage } from '@/lib/types';
 
 const AgentQuerySchema = z.object({
@@ -51,6 +53,10 @@ function checkRateLimit(identifier: string): boolean {
 }
 
 export async function POST(request: NextRequest) {
+  // Demo mode detection
+  const searchParams = request.nextUrl.searchParams;
+  const isDemo = await isDemoModeServer(searchParams);
+
   // Rate limit
   const ip = request.headers.get('x-forwarded-for') || 'unknown';
   const ua = request.headers.get('user-agent') || 'unknown';
@@ -61,6 +67,14 @@ export async function POST(request: NextRequest) {
       { error: 'Rate limit exceeded. Try again shortly.' },
       { status: 429 }
     );
+  }
+
+  // Auth gate — skip in demo mode
+  if (!isDemo) {
+    const session = await getServerSession(request);
+    if (!session) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
   }
 
   try {

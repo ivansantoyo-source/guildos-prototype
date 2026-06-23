@@ -13,10 +13,14 @@ import { fetchMarketPrice, bulkPriceCheck } from '@/lib/integrations/pricecharti
  * Protected by CRON_SECRET authorization header (set automatically by Vercel Cron).
  */
 export async function GET(request?: NextRequest) {
-  // Auth: CRON_SECRET header check
+  // Auth: CRON_SECRET header check — FAILS CLOSED
+  // In production, CRON_SECRET MUST be set via `vercel env add CRON_SECRET production`
   const authHeader = request?.headers?.get('authorization');
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && (!authHeader || authHeader !== `Bearer ${cronSecret}`)) {
+  if (!cronSecret || !authHeader || authHeader !== `Bearer ${cronSecret}`) {
+    if (!cronSecret) {
+      console.error('[cron/price-sync] CRON_SECRET not configured — run ABORTED. Set CRON_SECRET in Vercel env vars.');
+    }
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

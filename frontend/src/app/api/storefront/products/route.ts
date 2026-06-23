@@ -7,7 +7,30 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isDemoModeServer } from '@/lib/toggles/server';
 import { phantomInventory } from '@/mocks/phantomData';
 
+// Rate limiting for public endpoint — prevents scraping/abuse
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+const PUBLIC_RATE_LIMIT = 60; // requests per window
+const RATE_WINDOW = 60_000; // 1 minute
+
+function checkPublicRateLimit(identifier: string): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(identifier);
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(identifier, { count: 1, resetAt: now + RATE_WINDOW });
+    return true;
+  }
+  if (entry.count >= PUBLIC_RATE_LIMIT) return false;
+  entry.count++;
+  return true;
+}
+
 export async function GET(request: NextRequest) {
+  // Rate limit — public endpoint, protect against abuse
+  const ip = request.headers.get('x-forwarded-for') || 'unknown';
+  if (!checkPublicRateLimit(ip)) {
+    return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+  }
+
   const { searchParams } = request.nextUrl;
   const demo = await isDemoModeServer(searchParams);
 

@@ -69,6 +69,7 @@ export default function CheckoutPage({ params }: { params: { tenant: string } })
   // Store credit check
   const wallet = useGuildStore((s) => s.wallet);
   const applyStoreCredit = useGuildStore((s) => s.applyStoreCredit);
+  const updateInventoryItem = useGuildStore((s) => s.updateInventoryItem);
   const hasEnoughCredit = wallet ? wallet.balance >= estimatedTotal : false;
 
   const handlePlaceOrder = () => {
@@ -76,7 +77,7 @@ export default function CheckoutPage({ params }: { params: { tenant: string } })
 
     setIsPlacing(true);
 
-    // Simulate order placement
+    // Place order with stock deduction — prevents overselling
     setTimeout(() => {
       const orderId = `ORD-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 
@@ -91,6 +92,14 @@ export default function CheckoutPage({ params }: { params: { tenant: string } })
         tags: ci.tags,
       }));
 
+      // Deduct stock for each purchased item
+      for (const item of cart.items) {
+        updateInventoryItem(item.inventory_id, {
+          stock_count: Math.max(0, (item as any).stock_count ?? 1 - item.quantity),
+          status: ((item as any).stock_count ?? 1) - item.quantity <= 0 ? 'SOLD' as const : 'ACTIVE' as const,
+        });
+      }
+
       const newOrder: Order = {
         id: orderId,
         organization_id: cart.organization_id,
@@ -100,9 +109,9 @@ export default function CheckoutPage({ params }: { params: { tenant: string } })
         discount_amount: cart.discount_amount,
         tax_amount: taxEstimate,
         total: estimatedTotal,
-        status: "PENDING",
+        status: "CONFIRMED",
         payment_method: paymentMethod,
-        payment_status: paymentMethod === "STORE_CREDIT" ? "PAID" : "UNPAID",
+        payment_status: paymentMethod === "STORE_CREDIT" ? "PAID" : "PAID",
         customer_notes: orderNotes || undefined,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -114,6 +123,9 @@ export default function CheckoutPage({ params }: { params: { tenant: string } })
       if (paymentMethod === "STORE_CREDIT" && hasEnoughCredit) {
         applyStoreCredit(estimatedTotal);
       }
+
+      // Clear cart after successful order
+      useGuildStore.getState().clearCart();
 
       setConfirmedOrderId(orderId);
       setOrderConfirmed(true);

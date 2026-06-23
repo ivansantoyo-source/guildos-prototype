@@ -163,9 +163,21 @@ export async function proxy(request: NextRequest) {
     httpOnly: false, // client-side needs to read it for URL sync
   });
 
-  // --- 5. Security headers for production ---
+  // --- 5. Security headers ---
+  // Production-grade security headers (applied in all environments for consistency)
+  response.headers.set('X-Content-Type-Options', 'nosniff');
+  response.headers.set('X-Frame-Options', 'DENY');
+  response.headers.set('X-XSS-Protection', '1; mode=block');
+  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+
   if (process.env.NODE_ENV === 'production') {
     response.headers.set('X-Demo-Mode', isDemoRequest ? 'true' : 'false');
+    response.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
+    response.headers.set(
+      'Content-Security-Policy',
+      "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://*.supabase.co https://api.nvidia.com; frame-src 'self' https://*.stripe.com; report-uri /api/security/csp-report"
+    );
   }
 
   return response;

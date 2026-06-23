@@ -3,6 +3,17 @@ import Stripe from 'stripe';
 import { createClient } from '@/lib/supabase/server';
 import { rateLimit } from '@/lib/security/rate-limit';
 
+// Cache Stripe instance — avoid creating a new client on every webhook request
+let stripeInstance: Stripe | null = null;
+function getStripe(): Stripe {
+  if (!stripeInstance && process.env.STRIPE_SECRET_KEY) {
+    stripeInstance = new Stripe(process.env.STRIPE_SECRET_KEY, {
+      apiVersion: '2026-03-25.dahlia' as any,
+    });
+  }
+  return stripeInstance!;
+}
+
 /**
  * Stripe Webhook Handler
  *
@@ -51,7 +62,7 @@ export async function POST(request: NextRequest) {
     // ======================================================================
     // Production — verify Stripe signature
     // ======================================================================
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const stripe = getStripe();
 
     const event = stripe.webhooks.constructEvent(
       body,
