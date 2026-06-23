@@ -79,7 +79,7 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
                     Browse our collection to find your next quest item.
                   </p>
                   <Link
-                    href={demoHref("/products")}
+                    href={demoHref("/store/products")}
                     onClick={onClose}
                     className="inline-block mt-4 px-4 py-2 text-xs rounded-lg bg-primary text-primary-foreground font-bold hover:bg-primary/90 transition-colors"
                   >
@@ -171,21 +171,21 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
 
                 <div className="flex gap-2">
                   <Link
-                    href={demoHref("/products")}
+                    href={demoHref("/store/products")}
                     onClick={onClose}
                     className="flex-1 py-2.5 text-xs rounded-lg border border-border text-muted-foreground hover:text-primary hover:border-primary/30 transition-all text-center"
                   >
                     Continue Shopping
                   </Link>
                   <Link
-                    href={demoHref("/checkout")}
+                    href={demoHref("/store/checkout")}
                     onClick={onClose}
                     className="flex-1 py-2.5 text-xs rounded-lg bg-primary text-primary-foreground font-bold hover:bg-primary/90 transition-colors text-center"
                   >
                     Checkout
                   </Link>
                   <Link
-                    href={demoHref("/cart")}
+                    href={demoHref("/store/cart")}
                     onClick={onClose}
                     className="px-3 py-2.5 text-xs rounded-lg border border-border text-muted-foreground hover:text-primary hover:border-primary/30 transition-all"
                     title="View full cart"

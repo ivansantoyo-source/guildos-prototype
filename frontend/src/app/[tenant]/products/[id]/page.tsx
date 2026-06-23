@@ -15,9 +15,9 @@ import type { InventoryItem, CartItem } from "@/lib/types";
 // ============================================================
 // PRODUCT DETAIL PAGE
 // ============================================================
-export default function ProductDetailPage({ params }: { params: { tenant: string; id: string } }) {
-  const { tenant, id } = params;
-  const storeName = tenant.replace(/-/g, " ");
+export default function ProductDetailPage() {
+  const { tenant, id } = useParams<{ tenant: string; id: string }>();
+  const storeName = (tenant || "demo").replace(/-/g, " ");
   const router = useRouter();
 
   const inventory = useGuildStore((s) => s.inventory);

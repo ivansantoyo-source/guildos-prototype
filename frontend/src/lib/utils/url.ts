@@ -18,6 +18,17 @@ export function demoHref(path: string): string {
   // Check demo mode from multiple sources (priority order)
   const isDemo = checkDemoMode();
 
+  // If we're on a /store path, keep all links under /store for clean URLs
+  // The proxy will rewrite /store/* → /demo/* internally
+  if (typeof window !== 'undefined') {
+    try {
+      const currentPath = window.location.pathname;
+      if (currentPath.startsWith('/store') && !path.startsWith('/store')) {
+        path = `/store${path}`;
+      }
+    } catch { /* ignore */ }
+  }
+
   if (!isDemo) return path;
 
   // Already has demo param

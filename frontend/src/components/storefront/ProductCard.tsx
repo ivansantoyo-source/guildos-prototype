@@ -63,7 +63,7 @@ export default function ProductCard({ item, onAddToCart, showActions = true }: P
       className="relative group"
     >
       <Link
-        href={demoHref(`/products/${item.id}`)}
+        href={demoHref(`/store/products/${item.id}`)}
         className={`block guild-card bg-card border rounded-xl overflow-hidden transition-all duration-300 ${
           item.is_legendary
             ? "border-legendary/40 shadow-[0_0_20px_oklch(0.65_0.25_300/15%)]"

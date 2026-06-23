@@ -38,10 +38,10 @@ export default function StoreNav({ tenant, storeName }: StoreNavProps) {
   }, [pathname]);
 
   const navLinks = [
-    { href: demoHref("/products"), label: "Browse", icon: "📦" },
-    { href: demoHref("/orders"), label: "Orders", icon: "📋" },
-    { href: demoHref("/account"), label: "Account", icon: "👤" },
-    { href: demoHref("/chat"), label: "AI Chat", icon: "🤖" },
+    { href: demoHref("/store/products"), label: "Browse", icon: "📦" },
+    { href: demoHref("/store/orders"), label: "Orders", icon: "📋" },
+    { href: demoHref("/store/account"), label: "Account", icon: "👤" },
+    { href: demoHref("/store/chat"), label: "AI Chat", icon: "🤖" },
   ];
 
   return (
@@ -53,7 +53,7 @@ export default function StoreNav({ tenant, storeName }: StoreNavProps) {
             <div className="flex items-center gap-6">
               {/* Store name / Home link */}
               <Link
-                href={demoHref("/")}
+                href={demoHref("/store")}
                 className="flex items-center gap-2 group"
               >
                 <span className="text-xl">🎮</span>
@@ -139,7 +139,7 @@ export default function StoreNav({ tenant, storeName }: StoreNavProps) {
             >
               <nav className="px-4 py-3 space-y-1" aria-label="Mobile store navigation">
                 <Link
-                  href={demoHref("/")}
+                  href={demoHref("/store")}
                   className="flex items-center gap-2 px-3 py-2.5 text-xs rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/5 transition-all"
                 >
                   <span>🏠</span>

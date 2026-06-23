@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, use } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { useGuildStore } from "@/lib/store/useGuildStore";
@@ -313,9 +313,9 @@ function HeroSection({ tenant, storeName }: { tenant: string; storeName: string 
 // ============================================================
 // MAIN STOREFRONT HOME PAGE
 // ============================================================
-export default function TenantHomePage({ params }: { params: { tenant: string } }) {
-  const tenant = params.tenant;
-  const storeName = tenant.replace(/-/g, " ");
+export default function TenantHomePage({ params }: { params: Promise<{ tenant: string }> }) {
+  const { tenant } = use(params);
+  const storeName = (tenant || "demo").replace(/-/g, " ");
 
   const inventory = useGuildStore((s) => s.inventory);
   const addToCartAction = useGuildStore((s) => s.addToCart);

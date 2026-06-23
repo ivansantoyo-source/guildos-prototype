@@ -284,7 +284,7 @@ export default function LandingPage() {
             <span className="text-xl font-bold text-primary text-glow-green tracking-wider">GUILD_OS</span>
           </div>
           <div className="flex items-center gap-4">
-            <Link href="/demo?demo=true" className="text-sm text-muted-foreground hover:text-gold transition-colors">🛒 Store</Link>
+            <Link href="/store" className="text-sm text-muted-foreground hover:text-gold transition-colors">🛒 Store</Link>
             <Link href="/login" className="text-sm text-muted-foreground hover:text-primary transition-colors">Sign In</Link>
             <Link href="/dashboard?demo=true" className="px-4 py-2 text-sm rounded bg-primary text-primary-foreground font-bold hover:bg-primary/90 transition-colors">Launch Demo</Link>
           </div>
@@ -317,7 +317,7 @@ export default function LandingPage() {
             <Link href="/dashboard?demo=true" onClick={() => { if (typeof window !== 'undefined') { try { const { useGuildStore } = require('@/lib/store/useGuildStore'); useGuildStore.getState().setDemoMode(true); } catch {} }}} className="px-8 py-3.5 rounded-lg bg-primary text-primary-foreground font-bold text-base hover:bg-primary/90 transition-all hover:shadow-[0_0_30px_oklch(0.78_0.2_145/20%)]">
               ⚔️ Enter the Guild
             </Link>
-            <Link href="/demo?demo=true" className="px-8 py-3.5 rounded-lg bg-gold/20 border border-gold/40 text-gold font-bold text-base hover:bg-gold/30 transition-all hover:shadow-[0_0_20px_rgba(255,193,7,0.3)]">
+            <Link href="/store" className="px-8 py-3.5 rounded-lg bg-gold/20 border border-gold/40 text-gold font-bold text-base hover:bg-gold/30 transition-all hover:shadow-[0_0_20px_rgba(255,193,7,0.3)]">
               🛒 Visit the Store
             </Link>
             <Link href="#features" className="px-8 py-3.5 rounded-lg border border-border text-foreground font-medium text-base hover:border-primary/40 hover:bg-primary/5 transition-all">

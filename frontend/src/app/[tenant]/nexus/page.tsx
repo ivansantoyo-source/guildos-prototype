@@ -1,4 +1,6 @@
-export default function NexusPage({ params }: { params: { tenant: string } }) {
+// Next.js 16: params is a Promise in server components
+export default async function NexusPage({ params }: { params: Promise<{ tenant: string }> }) {
+  const { tenant } = await params;
   // Mock data for The Nexus based on the blueprint
   const lfgLobbies = [
     { id: "lobby-1", game: "Super Smash Bros. Melee", slots_total: 4, slots_filled: 2, start_time: "Tonight, 8:00 PM" },
@@ -17,7 +19,7 @@ export default function NexusPage({ params }: { params: { tenant: string } }) {
         The Nexus
       </h1>
       <p className="text-lg text-muted-foreground mb-12 italic">
-        Welcome to the physical space of {params.tenant}. Find a party or challenge the local legends.
+        Welcome to the physical space of {tenant}. Find a party or challenge the local legends.
       </p>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 w-full max-w-6xl">

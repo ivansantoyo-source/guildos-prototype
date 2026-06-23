@@ -101,7 +101,18 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  // --- 2. Subdomain / Tenant Resolution ---
+  // --- 2. Storefront URL Rewrite (demo mode) ---
+  // /store/* → /demo/* when in demo mode, so the customer storefront
+  // has clean URLs without ?demo=true in every link
+  if (isDemoRequest && url.pathname.startsWith('/store')) {
+    const storePath = url.pathname.replace('/store', '/demo');
+    const newUrl = url.clone();
+    newUrl.pathname = storePath;
+    newUrl.searchParams.set('demo', 'true');
+    return NextResponse.rewrite(newUrl);
+  }
+
+  // --- 3. Subdomain / Tenant Resolution ---
   const currentHost =
     process.env.NODE_ENV === 'production' && process.env.VERCEL === '1'
       ? hostname.replace(`.guildos.com`, '')
