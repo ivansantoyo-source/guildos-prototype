@@ -1,7 +1,7 @@
 # GuildOS — Project State
 
-> **Last updated:** 2026-06-22
-> **Version:** v2.0.0
+> **Last updated:** 2026-06-23
+> **Version:** v2.0.1
 > **Status:** ✅ Production Deployed on Vercel + Aegis Supabase
 
 ---
@@ -70,7 +70,8 @@
 | ~~API routes always return phantom data~~ | ~~Critical~~ | ✅ FIXED 2026-06-22 — inventory, bounties, nexus routes now check demo mode |
 | ~~Missing ?demo=true on internal links~~ | ~~Critical~~ | ✅ FIXED 2026-06-22 — centralized `demoHref()` utility in `lib/utils/url.ts` |
 | ~~Proxy demo detection fragile~~ | ~~High~~ | ✅ FIXED 2026-06-22 — proxy v2.1 with explicit priority chain |
-| Deploy pending | High | `fix/demo-mode-navigation` branch needs merge → `main` + Vercel deploy |
+| ~~Deploy pending~~ | ~~High~~ | ✅ DEPLOYED 2026-06-23 — `fix/demo-mode-navigation` deployed to Vercel |
+| ~~API routes 500 without cookie~~ | ~~High~~ | ✅ FIXED 2026-06-23 — `isDemoModeServer()` now checks URL params, not just cookies |
 | No real Supabase Auth users | Medium | Login works in demo; production needs real auth flow testing |
 | No Stripe live test | Medium | BYO keys configured but no test transaction run |
 | No Twilio live test | Medium | SMS integration not end-to-end tested |
@@ -82,9 +83,14 @@
 
 ---
 
-## Latest Changes (2026-06-22)
+## Latest Changes (2026-06-23)
 
-### Demo Mode Root Cause Fix
+### API Route URL Param Fix (2026-06-23)
+**Problem:** API routes returned 500 errors when called with `?demo=true` (no cookie).
+**Root cause:** `isDemoModeServer()` only checked cookies + env var. The proxy matcher excludes `/api/` routes, so the `guildos_demo_mode` cookie was never set for direct API calls. The URL param `?demo=true` was ignored.
+**Fix:** Updated `isDemoModeServer(searchParams?)` to accept optional URLSearchParams. Priority chain now matches client-side: URL param > cookie > env var. All 9 call sites across 5 API routes pass `request.nextUrl.searchParams`.
+
+### Demo Mode Root Cause Fix (2026-06-22)
 **Problem:** Clicking any tab in demo mode redirected to `/login`.
 **Root cause:** Next.js client-side navigations don't go through proxy middleware. Every internal `href` must include `?demo=true`. Only sidebar/mobile nav did this — QuickActions, breadcrumbs, EmptyState CTAs all had bare hrefs.
 **Fix:** Created `lib/utils/url.ts` with centralized `demoHref()` function. All components now use it. Also created `<DemoAwareLink>` component.
@@ -93,7 +99,7 @@
 **Problem:** 4 API routes (`inventory`, `bounties`, `nexus/lfg`, `nexus/scores`) ALWAYS returned phantom data — never checked demo mode. Production would serve fake data.
 **Fix:** All routes now check `isDemoModeServer()` and query Supabase `guildos_core` in production mode.
 
-### New Files Created
+### New Files Created (cumulative)
 - `frontend/src/lib/utils/url.ts` — `demoHref()` utility + `isCurrentlyDemoMode()` + `persistDemoMode()`
 - `frontend/src/components/ui/demo-aware-link.tsx` — `<DemoAwareLink>` drop-in for `next/link`
 - `frontend/src/components/widgets/demo-banner.tsx` — Interactive rotating tips banner
@@ -101,7 +107,9 @@
 ### Deploy Instructions
 ```bash
 cd /Users/vanguardestatecontrols/GuildOS/frontend && vercel deploy --prod --yes --scope vec717
-# Then merge: git checkout main && git merge fix/demo-mode-navigation && git push origin main
+# Already deployed as of 2026-06-23. Branch fix/demo-mode-navigation is live.
+# Next step: merge to main.
+git checkout main && git merge fix/demo-mode-navigation && git push origin main
 ```
 
 ---
