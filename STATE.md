@@ -1,8 +1,8 @@
 # GuildOS — Project State
 
 > **Last updated:** 2026-06-23
-> **Version:** v2.0.1
-> **Status:** ✅ Production Deployed on Vercel + Aegis Supabase
+> **Version:** v2.1.0
+> **Status:** ✅ Production Deployed on Vercel + Aegis Supabase — All Systems Hardened
 
 ---
 
@@ -13,7 +13,8 @@
 | **Database** | ✅ | 13 tables in `guildos_core` on Aegis Supabase — 86 Aegis tables untouched |
 | **RLS + Triggers** | ✅ | Full tenant isolation, legendary flagging, level tier calculation |
 | **Landing Page** | ✅ | Hero, features, faction tease, pricing, FAQ accordion |
-| **Login/Auth** | ✅ | Email/password, faction selection, forgot password flow, OAuth buttons, demo quick-access |
+| **Login/Auth** | ✅ | Real Supabase auth: signIn, signUp, OAuth (Google/GitHub), password reset, demo bypass |
+| **Middleware** | ✅ | Proxy active — auth gate, demo cookie sync, subdomain routing, session refresh |
 | **Dashboard** | ✅ | Date filters, revenue sparkline, quick actions, alerts, upcoming LFGs |
 | **Inventory** | ✅ | Grid/list, batch ops, scan modal with drag-drop, scrap yard, CSV export, inline editing |
 | **Bounty Board** | ✅ | 3-step creation wizard, fulfillment workflow, auto-suggest prices, share, sort |
@@ -43,47 +44,61 @@
 | **Empty States** | ✅ | 7 domain-specific variants with CTAs |
 | **Confirm Dialog** | ✅ | Glass modal with focus trap, keyboard nav, destructive variant |
 | **Vercel Cron Jobs** | ✅ | 4 daily: price sync, Oracle, B2B arbitrage, faction war |
-| **Stripe Webhook** | ✅ | Endpoint ready at `/api/webhooks/stripe` |
-| **Demo Mode** | ✅ | URL param > localStorage > env var priority chain |
-| **BYO Key System** | ✅ | Per-tenant key management via `/settings` + `organizations.config` JSONB |
-| **Vercel Env Vars** | ✅ | All 6 production env vars set and encrypted |
-| **Documentation** | ✅ | ARCHITECTURE.md, STATE.md, HANDOVER.md, .env.example |
+| **Stripe Payments** | ✅ | SDK integrated, webhook verified, BYO keys, checkout/billing/subscription status |
+| **Supabase Realtime** | ✅ | Fixed schema (guildos_core), RealtimeProvider wired to store, 4 subscriptions |
+| **Security** | ✅ | Rate limiting (AI routes), LIKE wildcard escaping, open redirect fixed, error leakage patched |
+| **Error Handling** | ✅ | error.tsx, not-found.tsx, global-error.tsx, unhandled rejection handler |
+| **guildFetch** | ✅ | Timeout (15s), retry (2x), error classification (Network/Timeout/Auth/Server) |
+| **E2E Tests** | ✅ | 10 Playwright smoke tests across demo + production modes — all pass |
+| **Documentation** | ✅ | .env.example (19 vars), ARCHITECTURE.md, STATE.md, HANDOVER.md |
 
 ---
-
-## Deployment Status
-
-| Service | URL / ID | Status |
-|---------|----------|--------|
-| **Vercel (prod)** | https://guildos-flax.vercel.app | ✅ Live — 33 pages, 22 API routes |
-| **Supabase** | Aegis-OS-DB (`tyustwqwvjmzvuazfwkv`) | ✅ Connected — `guildos_core` schema active |
-| **GitHub** | ivansantoyo-source/guildos-prototype | ✅ main branch — all code pushed |
-| **Cron Jobs** | 4 Vercel cron jobs configured | ✅ Pending first execution |
-
----
-
 ## Known Issues & Gaps
 
 | Issue | Severity | Notes |
 |-------|----------|-------|
-| ~~Demo mode nav redirects to login~~ | ~~Critical~~ | ✅ FIXED 2026-06-22 — see `fix/demo-mode-navigation` branch |
-| ~~API routes always return phantom data~~ | ~~Critical~~ | ✅ FIXED 2026-06-22 — inventory, bounties, nexus routes now check demo mode |
-| ~~Missing ?demo=true on internal links~~ | ~~Critical~~ | ✅ FIXED 2026-06-22 — centralized `demoHref()` utility in `lib/utils/url.ts` |
-| ~~Proxy demo detection fragile~~ | ~~High~~ | ✅ FIXED 2026-06-22 — proxy v2.1 with explicit priority chain |
-| ~~Deploy pending~~ | ~~High~~ | ✅ DEPLOYED 2026-06-23 — `fix/demo-mode-navigation` deployed to Vercel |
-| ~~API routes 500 without cookie~~ | ~~High~~ | ✅ FIXED 2026-06-23 — `isDemoModeServer()` now checks URL params, not just cookies |
-| No real Supabase Auth users | Medium | Login works in demo; production needs real auth flow testing |
-| No Stripe live test | Medium | BYO keys configured but no test transaction run |
+| ~~Demo mode nav redirects to login~~ | ~~Critical~~ | ✅ FIXED 2026-06-22 |
+| ~~API routes always return phantom data~~ | ~~Critical~~ | ✅ FIXED 2026-06-22 |
+| ~~Missing ?demo=true on internal links~~ | ~~Critical~~ | ✅ FIXED 2026-06-22 |
+| ~~Proxy demo detection fragile~~ | ~~High~~ | ✅ FIXED 2026-06-22 |
+| ~~API routes 500 without cookie~~ | ~~High~~ | ✅ FIXED 2026-06-23 |
+| ~~Middleware dead code~~ | ~~Critical~~ | ✅ FIXED 2026-06-23 — proxy.ts default export, middleware active |
+| ~~Login page fake auth~~ | ~~Critical~~ | ✅ FIXED 2026-06-23 — real Supabase signIn/signUp/OAuth/reset |
+| ~~SQL injection risk~~ | ~~Critical~~ | ✅ FIXED 2026-06-23 — LIKE wildcards escaped |
+| ~~Error detail leakage~~ | ~~High~~ | ✅ FIXED 2026-06-23 — 7 routes patched |
+| ~~No error pages~~ | ~~High~~ | ✅ FIXED 2026-06-23 — error.tsx, not-found.tsx, global-error.tsx |
+| ~~No rate limiting~~ | ~~High~~ | ✅ FIXED 2026-06-23 — AI routes rate limited |
+| ~~Stripe webhook dead~~ | ~~High~~ | ✅ FIXED 2026-06-23 — SDK, verification, 4 event types |
+| ~~Settings API stub~~ | ~~High~~ | ✅ FIXED 2026-06-23 — persists to Supabase |
+| ~~Realtime broken~~ | ~~High~~ | ✅ FIXED 2026-06-23 — schema, client, provider, store actions |
+| ~~No e2e tests~~ | ~~High~~ | ✅ FIXED 2026-06-23 — 10 Playwright smoke tests, all pass |
+| No real Supabase Auth users tested | Medium | Auth code is wired; needs a real signup → verify → login flow test |
+| No Stripe live test transaction | Medium | Integration wired; needs test keys + a real checkout flow run |
 | No Twilio live test | Medium | SMS integration not end-to-end tested |
-| No e2e tests | Medium | Manual testing only; recommend Playwright for critical paths |
-| No real-time Supabase | Low | `useRealtime` hook simulates in demo; needs Supabase Realtime enabled |
+| Supabase Realtime not enabled on project | Medium | RealtimeProvider wired; needs DB replication enabled in Supabase dashboard |
 | Voice input browser support | Low | Web Speech API works in Chrome/Edge, not Firefox/Safari |
-| KonamiListener SSR | Low | `triggerConfetti` import may fail in SSR — handled by "use client" |
 | Framer Motion bundle size | Low | Tree-shaking enabled; consider dynamic import for effects |
 
 ---
 
 ## Latest Changes (2026-06-23)
+
+### Production Hardening Sweep (2026-06-23)
+**Scope:** 29 files, +1285/-291 lines, 8 parallel sub-agents
+**Systems hardened:**
+
+| System | Before | After |
+|--------|--------|-------|
+| **Middleware** | Dead code (no middleware.ts) | Live — auth gate, demo cookie sync, subdomain routing |
+| **Auth** | Fake login (all stubs) | Real Supabase signIn/signUp/OAuth/resetPassword |
+| **Stripe** | Raw fetch, webhook commented out | SDK, signature verification, 4 event types, BYO keys |
+| **Realtime** | Never wired, wrong schema | Fixed (guildos_core), RealtimeProvider, store actions |
+| **Settings API** | Returned demo data always | Persists to Supabase organizations.config |
+| **Security** | No rate limiting, SQL injection, error leakage, open redirect | All patched |
+| **Error Pages** | None (Next.js defaults) | error.tsx, not-found.tsx, global-error.tsx |
+| **guildFetch** | No timeout, no retry | 15s timeout, 2x retry, error classification |
+| **E2E Tests** | None | 10 Playwright tests, all pass against production |
+| **.env.example** | Missing | 19 documented env vars |
 
 ### API Route URL Param Fix (2026-06-23)
 **Problem:** API routes returned 500 errors when called with `?demo=true` (no cookie).
