@@ -14,20 +14,19 @@ export async function proxy(request: NextRequest) {
 
   // --- 0. Demo Mode Detection ---
   // Priority: URL param > cookie > env var
-  // The cookie is set by the merchant layout when demo mode is activated.
+  // Read cookie manually (more reliable across Next.js versions)
+  const cookieHeader = request.headers.get('cookie') || '';
   const demoParam = url.searchParams.get('demo');
-  const demoCookie = request.cookies.get('guildos_demo_mode');
+  const hasDemoCookie = cookieHeader.includes('guildos_demo_mode=true');
   const isDemoRequest =
     demoParam === 'true' ||
-    demoCookie?.value === 'true' ||
+    hasDemoCookie ||
     process.env.NEXT_PUBLIC_DEMO_MODE !== 'false';
 
-  // If demo cookie is set but URL doesn't have ?demo=true, redirect to add it.
-  // This ensures all subsequent server-side processing sees the demo flag.
-  if (demoCookie?.value === 'true' && demoParam !== 'true' && !url.pathname.startsWith('/api/') && !url.pathname.startsWith('/_next/')) {
+  // If demo cookie is set but URL doesn't have ?demo=true, add it via redirect
+  if (hasDemoCookie && demoParam !== 'true' && !url.pathname.startsWith('/api/') && !url.pathname.startsWith('/_next/')) {
     const demoUrl = url.clone();
     demoUrl.searchParams.set('demo', 'true');
-    // Preserve any existing query params
     return NextResponse.redirect(demoUrl);
   }
 
