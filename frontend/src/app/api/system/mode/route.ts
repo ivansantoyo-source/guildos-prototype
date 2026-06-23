@@ -1,12 +1,13 @@
-import { isDemoMode, TIER_FEATURES } from '@/lib/toggles';
+import { isDemoModeServer } from '@/lib/toggles/server';
+import { TIER_FEATURES, shouldUseMock } from '@/lib/toggles';
 
 /**
  * GET /api/system/mode
- * Returns the current system mode and available features.
- * Used by the UI to conditionally show/hide features based on tier.
+ * Returns the current system mode, tier, and available features.
+ * Used by the UI to conditionally show/hide features.
  */
 export async function GET() {
-  const demoMode = isDemoMode();
+  const demoMode = await isDemoModeServer();
 
   // In demo, assume wizard tier for maximum feature showcase
   const tier = demoMode ? 'wizard' : 'merchant';
@@ -17,11 +18,11 @@ export async function GET() {
     tier,
     features,
     services: {
-      ai: demoMode ? 'mock' : process.env.NVIDIA_NIM_API_KEY ? 'live' : 'disabled',
-      payments: demoMode ? 'mock' : process.env.STRIPE_SECRET_KEY ? 'live' : 'disabled',
-      sms: demoMode ? 'mock' : process.env.TWILIO_ACCOUNT_SID ? 'live' : 'disabled',
-      pricing: demoMode ? 'mock' : process.env.PRICECHARTING_API_KEY ? 'live' : 'disabled',
+      ai: shouldUseMock('ai') ? 'mock' : 'live',
+      payments: shouldUseMock('payments') ? 'mock' : 'live',
+      sms: shouldUseMock('sms') ? 'mock' : 'live',
+      pricing: shouldUseMock('pricing') ? 'mock' : 'live',
     },
-    version: '1.0.0-alpha',
+    version: '2.0.0',
   });
 }
