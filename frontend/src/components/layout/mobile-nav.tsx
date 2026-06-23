@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useGuildStore } from "@/lib/store/useGuildStore";
 
-const TABS = [
+const BASE_TABS = [
   { href: "/dashboard", label: "Terminal", icon: "⚔️", id: "dashboard" },
   { href: "/inventory", label: "Loot", icon: "📦", id: "inventory" },
   { href: "/bounty-board", label: "Quests", icon: "📜", id: "bounty-board" },
@@ -12,15 +12,25 @@ const TABS = [
   { href: "/shopkeeper", label: "AI", icon: "🤖", id: "shopkeeper" },
 ];
 
+function getTabs(demoMode: boolean) {
+  if (!demoMode) return BASE_TABS;
+  return BASE_TABS.map((tab) => ({
+    ...tab,
+    href: `${tab.href}?demo=true`,
+  }));
+}
+
 export function MobileNav() {
   const pathname = usePathname();
+  const demoMode = useGuildStore((s) => s.demoMode);
   const notifications = useGuildStore((s) => s.notifications);
   const unreadCount = notifications.filter((n) => !n.read_at).length;
+  const tabs = getTabs(demoMode);
 
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-sidebar/95 backdrop-blur-md border-t border-border safe-area-bottom">
       <div className="flex items-center justify-around h-16">
-        {TABS.map((tab) => {
+        {tabs.map((tab) => {
           const isActive = pathname.startsWith(tab.href);
           return (
             <Link

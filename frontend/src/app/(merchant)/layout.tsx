@@ -20,7 +20,8 @@ import {
 import { playClick } from "@/lib/audio/sounds";
 import { MobileNav } from "@/components/layout/mobile-nav";
 
-const NAV_ITEMS = [
+// Nav items — hrefs preserve demo mode param so navigation works without redirects
+const BASE_NAV = [
   { href: "/dashboard", label: "Dashboard", icon: "⚔️", id: "dashboard" },
   { href: "/inventory", label: "Inventory Matrix", icon: "📦", id: "inventory" },
   { href: "/bounty-board", label: "Quest Board", icon: "📜", id: "bounty-board" },
@@ -30,6 +31,14 @@ const NAV_ITEMS = [
   { href: "/profile", label: "Profile", icon: "👤", id: "profile" },
   { href: "/settings", label: "Settings", icon: "⚙️", id: "settings" },
 ];
+
+function getNavItems(demoMode: boolean) {
+  if (!demoMode) return BASE_NAV;
+  return BASE_NAV.map((item) => ({
+    ...item,
+    href: item.href.includes('?') ? item.href : `${item.href}?demo=true`,
+  }));
+}
 
 function getBreadcrumbs(pathname: string): Array<{ label: string; href: string }> {
   const segments = pathname.split("/").filter(Boolean);
@@ -43,7 +52,7 @@ function getBreadcrumbs(pathname: string): Array<{ label: string; href: string }
     // Skip the tenant segment (first segment, e.g. "demo")
     if (segment === segments[0] && segments.length > 1) continue;
     accumulated += `/${segment}`;
-    const match = NAV_ITEMS.find((item) => item.href.endsWith(segment));
+    const match = BASE_NAV.find((item) => item.href.endsWith(segment));
     const label = match?.label || segment.charAt(0).toUpperCase() + segment.slice(1);
     crumbs.push({ label, href: accumulated });
   }
@@ -108,12 +117,12 @@ export default function MerchantLayout({
 
   // Track active module from pathname
   useEffect(() => {
-    const active = NAV_ITEMS.find((item) => pathname.startsWith(item.href));
+    const active = BASE_NAV.find((item) => pathname.startsWith(item.href));
     if (active) setActiveModule(active.id);
   }, [pathname, setActiveModule]);
 
   const breadcrumbs = getBreadcrumbs(pathname);
-  const activeNav = NAV_ITEMS.find((i) => pathname.startsWith(i.href));
+  const activeNav = BASE_NAV.find((i) => pathname.startsWith(i.href));
 
   return (
     <div className="min-h-screen bg-background text-foreground font-mono flex relative bg-dot-grid-subtle">
@@ -153,7 +162,7 @@ export default function MerchantLayout({
           {/* Navigation */}
           <nav className="flex-1 py-4 space-y-1 px-2">
             <AnimatePresence mode="wait">
-              {NAV_ITEMS.map((item, idx) => {
+              {getNavItems(demoMode).map((item, idx) => {
                 const isActive = pathname.startsWith(item.href);
                 return (
                   <motion.div
