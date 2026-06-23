@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useGuildStore } from "@/lib/store/useGuildStore";
+import { demoHref } from "@/lib/utils/url";
 
 const BASE_TABS = [
   { href: "/dashboard", label: "Terminal", icon: "⚔️", id: "dashboard" },
@@ -12,20 +13,18 @@ const BASE_TABS = [
   { href: "/shopkeeper", label: "AI", icon: "🤖", id: "shopkeeper" },
 ];
 
-function getTabs(demoMode: boolean) {
-  if (!demoMode) return BASE_TABS;
+function getTabs() {
   return BASE_TABS.map((tab) => ({
     ...tab,
-    href: `${tab.href}?demo=true`,
+    href: demoHref(tab.href),
   }));
 }
 
 export function MobileNav() {
   const pathname = usePathname();
-  const demoMode = useGuildStore((s) => s.demoMode);
   const notifications = useGuildStore((s) => s.notifications);
   const unreadCount = notifications.filter((n) => !n.read_at).length;
-  const tabs = getTabs(demoMode);
+  const tabs = getTabs();
 
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-sidebar/95 backdrop-blur-md border-t border-border safe-area-bottom">

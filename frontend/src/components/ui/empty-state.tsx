@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { demoHref } from "@/lib/utils/url";
 
 interface EmptyStateProps {
   icon: string;
@@ -18,7 +19,7 @@ export function EmptyState({ icon, title, description, action }: EmptyStateProps
       {action && (
         action.href ? (
           <Link
-            href={action.href}
+            href={demoHref(action.href)}
             className="inline-flex px-5 py-2.5 text-sm rounded-lg bg-primary text-primary-foreground font-bold hover:bg-primary/90 transition-colors"
           >
             {action.label}

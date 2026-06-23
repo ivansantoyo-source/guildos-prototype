@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useGuildStore } from "@/lib/store/useGuildStore";
+import { demoHref } from "@/lib/utils/url";
 import { pageTransition, floatButton, sidebarItem } from "@/lib/animations";
 import {
   phantomInventory,
@@ -19,6 +20,7 @@ import {
 } from "@/mocks/phantomData";
 import { playClick } from "@/lib/audio/sounds";
 import { MobileNav } from "@/components/layout/mobile-nav";
+import { DemoBanner } from "@/components/widgets/demo-banner";
 
 // Nav items — hrefs preserve demo mode param so navigation works without redirects
 const BASE_NAV = [
@@ -32,11 +34,10 @@ const BASE_NAV = [
   { href: "/settings", label: "Settings", icon: "⚙️", id: "settings" },
 ];
 
-function getNavItems(demoMode: boolean) {
-  if (!demoMode) return BASE_NAV;
+function getNavItems() {
   return BASE_NAV.map((item) => ({
     ...item,
-    href: item.href.includes('?') ? item.href : `${item.href}?demo=true`,
+    href: demoHref(item.href),
   }));
 }
 
@@ -45,7 +46,7 @@ function getBreadcrumbs(pathname: string): Array<{ label: string; href: string }
   const crumbs: Array<{ label: string; href: string }> = [];
 
   // Always start with Home
-  crumbs.push({ label: "Home", href: "/" });
+  crumbs.push({ label: "Home", href: demoHref("/") });
 
   let accumulated = "";
   for (const segment of segments) {
@@ -54,7 +55,7 @@ function getBreadcrumbs(pathname: string): Array<{ label: string; href: string }
     accumulated += `/${segment}`;
     const match = BASE_NAV.find((item) => item.href.endsWith(segment));
     const label = match?.label || segment.charAt(0).toUpperCase() + segment.slice(1);
-    crumbs.push({ label, href: accumulated });
+    crumbs.push({ label, href: demoHref(accumulated) });
   }
 
   return crumbs;
@@ -162,7 +163,7 @@ export default function MerchantLayout({
           {/* Navigation */}
           <nav className="flex-1 py-4 space-y-1 px-2">
             <AnimatePresence mode="wait">
-              {getNavItems(demoMode).map((item, idx) => {
+              {getNavItems().map((item, idx) => {
                 const isActive = pathname.startsWith(item.href);
                 return (
                   <motion.div
@@ -285,6 +286,9 @@ export default function MerchantLayout({
             </div>
           </div>
         </header>
+
+        {/* Demo Mode Banner — interactive tour for potential customers */}
+        <DemoBanner />
 
         {/* Page Content with AnimatePresence */}
         <main className="flex-1 overflow-auto p-6">

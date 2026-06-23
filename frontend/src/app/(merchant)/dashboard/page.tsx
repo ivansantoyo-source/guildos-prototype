@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
+import Link from "next/link";
 import { useGuildStore } from "@/lib/store/useGuildStore";
+import { demoHref } from "@/lib/utils/url";
 import type { ActivityEvent, DashboardStats, FactionStanding } from "@/lib/types";
 
 // ============================================================
@@ -214,16 +216,16 @@ function EmptyState({ onRefresh }: { onRefresh: () => void }) {
 // ============================================================
 function QuickActions() {
   const quickActions = [
-    { label: "Scan Item", icon: "📸", href: "/inventory", id: "btn-quick-scan", color: "border-primary/30 bg-primary/5 text-primary" },
-    { label: "Post Bounty", icon: "📜", href: "/bounty-board", id: "btn-quick-bounty", color: "border-gold/30 bg-gold/5 text-gold" },
-    { label: "Create Lobby", icon: "🎮", href: "/nexus", id: "btn-quick-lobby", color: "border-xp/30 bg-xp/5 text-xp" },
-    { label: "Ask AI", icon: "🤖", href: "/shopkeeper", id: "btn-quick-ai", color: "border-legendary/30 bg-legendary/5 text-legendary" },
+    { label: "Scan Item", icon: "📸", href: demoHref("/inventory"), id: "btn-quick-scan", color: "border-primary/30 bg-primary/5 text-primary" },
+    { label: "Post Bounty", icon: "📜", href: demoHref("/bounty-board"), id: "btn-quick-bounty", color: "border-gold/30 bg-gold/5 text-gold" },
+    { label: "Create Lobby", icon: "🎮", href: demoHref("/nexus"), id: "btn-quick-lobby", color: "border-xp/30 bg-xp/5 text-xp" },
+    { label: "Ask AI", icon: "🤖", href: demoHref("/shopkeeper"), id: "btn-quick-ai", color: "border-legendary/30 bg-legendary/5 text-legendary" },
   ];
 
   return (
     <div className="flex flex-wrap gap-2">
       {quickActions.map((action) => (
-        <a
+        <Link
           key={action.id}
           href={action.href}
           id={action.id}
@@ -231,7 +233,7 @@ function QuickActions() {
         >
           <span>{action.icon}</span>
           {action.label}
-        </a>
+        </Link>
       ))}
     </div>
   );
