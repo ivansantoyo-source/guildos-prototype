@@ -51,6 +51,7 @@ const BASE_NAV = [
   { href: "/analytics", label: "Analytics", icon: "📊", id: "analytics" },
   { href: "/profile", label: "Profile", icon: "👤", id: "profile" },
   { href: "/settings", label: "Settings", icon: "⚙️", id: "settings" },
+  { href: "/demo", label: "🏪 View Storefront", icon: "🛒", id: "storefront" },
 ];
 
 function getNavItems() {

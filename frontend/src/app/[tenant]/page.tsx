@@ -8,6 +8,13 @@ import { demoHref } from "@/lib/utils/url";
 import { pageTransition, listContainer, listItemStagger } from "@/lib/animations";
 import StoreNav from "@/components/storefront/StoreNav";
 import ProductCard from "@/components/storefront/ProductCard";
+import {
+  phantomInventory,
+  phantomBounties,
+  phantomDashboardStats,
+  phantomOrders,
+  phantomStorefrontConfig,
+} from "@/mocks/phantomData";
 import type { InventoryItem } from "@/lib/types";
 
 // ============================================================
@@ -312,8 +319,26 @@ export default function TenantHomePage({ params }: { params: { tenant: string } 
 
   const inventory = useGuildStore((s) => s.inventory);
   const addToCartAction = useGuildStore((s) => s.addToCart);
+  const demoMode = useGuildStore((s) => s.demoMode);
+
+  const setInventory = useGuildStore((s) => s.setInventory);
+  const setBounties = useGuildStore((s) => s.setBounties);
+  const setDashboardStats = useGuildStore((s) => s.setDashboardStats);
+  const setCustomerOrders = useGuildStore((s) => s.setCustomerOrders);
+  const setStorefrontConfig = useGuildStore((s) => s.setStorefrontConfig);
 
   const [isLoading, setIsLoading] = useState(true);
+
+  // Seed phantom data for demo mode — storefront uses root layout, not merchant layout
+  useEffect(() => {
+    if (demoMode && inventory.length === 0) {
+      setInventory(phantomInventory);
+      setBounties(phantomBounties);
+      setDashboardStats(phantomDashboardStats);
+      setCustomerOrders(phantomOrders);
+      setStorefrontConfig(phantomStorefrontConfig);
+    }
+  }, [demoMode, inventory.length, setInventory, setBounties, setDashboardStats, setCustomerOrders, setStorefrontConfig]);
 
   useEffect(() => {
     const t = setTimeout(() => setIsLoading(false), 400);
