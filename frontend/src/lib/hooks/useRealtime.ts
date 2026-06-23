@@ -135,6 +135,35 @@ export function useRealtimeSubscription<T = Record<string, unknown>>({
           month: 6,
           year: 2026,
         } as unknown as T;
+      case "nexus_lfgs":
+        return {
+          ...base,
+          organization_id: "demo-time-warp-001",
+          creator_id: "usr-001",
+          game_title: (["GoldenEye 007", "Super Smash Bros.", "Street Fighter III", "Mario Kart 64", "Tekken 3"] as const)[
+            Math.floor(Math.random() * 5)
+          ],
+          description: "Demo lobby — all skill levels welcome!",
+          console_type: (["N64", "GAMECUBE", "DREAMCAST", "PS1"] as const)[
+            Math.floor(Math.random() * 4)
+          ],
+          player_slots_total: 4,
+          player_slots_filled: Math.floor(Math.random() * 3) + 1,
+          max_spectators: 4,
+          lobby_status: Math.random() < 0.3 ? "IN_PROGRESS" : "OPEN",
+          start_time: new Date(Date.now() + Math.random() * 86400000).toISOString(),
+        } as unknown as T;
+      case "nexus_lfg_participants":
+        return {
+          ...base,
+          lobby_id: `lfg-demo-${Math.floor(Math.random() * 3) + 1}`,
+          profile_id: `usr-demo-${Math.floor(Math.random() * 5) + 1}`,
+          profile_tag: (["TRON_99", "PIXEL_QUEEN", "NEO_GEO", "ARCADE_FURY", "LOOT_GOBLIN"] as const)[
+            Math.floor(Math.random() * 5)
+          ],
+          status: Math.random() < 0.2 ? "LEFT" : "JOINED",
+          joined_at: new Date().toISOString(),
+        } as unknown as T;
       default:
         return {
           ...base,
@@ -372,5 +401,81 @@ export function useFactionRealtime(
     callback,
     demoSimulate: demoMode,
     demoInterval: 20000,
+  });
+}
+
+/**
+ * Subscribe to bounty_stats (leaderboard) updates.
+ */
+export function useBountyStatsRealtime(
+  onChange?: (data: { eventType: RealtimeEvent; payload: unknown }) => void
+) {
+  const demoMode = useGuildStore((s) => s.demoMode);
+
+  const callback = useCallback(
+    (eventType: RealtimeEvent, payload: unknown) => {
+      if (onChange) onChange({ eventType, payload });
+    },
+    [onChange]
+  );
+
+  return useRealtimeSubscription({
+    table: "bounty_stats",
+    callback,
+    demoSimulate: demoMode,
+    demoInterval: 30000,
+  });
+}
+
+// ============================================================================
+// LFG & LFG Participants Hooks
+// ============================================================================
+
+/**
+ * Subscribe to nexus_lfgs table for LFG lobby changes.
+ */
+export function useLfgRealtime(
+  onChange?: (data: { eventType: RealtimeEvent; payload: unknown }) => void
+) {
+  const demoMode = useGuildStore((s) => s.demoMode);
+
+  const callback = useCallback(
+    (eventType: RealtimeEvent, payload: unknown) => {
+      if (onChange) onChange({ eventType, payload });
+    },
+    [onChange]
+  );
+
+  return useRealtimeSubscription({
+    table: "nexus_lfgs",
+    callback,
+    demoSimulate: demoMode,
+    demoInterval: 18000,
+  });
+}
+
+/**
+ * Subscribe to nexus_lfg_participants for a specific lobby.
+ * Filtered by lobby_id.
+ */
+export function useLfgParticipantsRealtime(
+  lobbyId: string,
+  onChange?: (data: { eventType: RealtimeEvent; payload: unknown }) => void
+) {
+  const demoMode = useGuildStore((s) => s.demoMode);
+
+  const callback = useCallback(
+    (eventType: RealtimeEvent, payload: unknown) => {
+      if (onChange) onChange({ eventType, payload });
+    },
+    [onChange]
+  );
+
+  return useRealtimeSubscription({
+    table: "nexus_lfg_participants",
+    filter: `lobby_id=eq.${lobbyId}`,
+    callback,
+    demoSimulate: demoMode,
+    demoInterval: 22000,
   });
 }

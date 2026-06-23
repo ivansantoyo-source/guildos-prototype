@@ -1,13 +1,18 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { isDemoModeServer } from "@/lib/toggles/server";
 import { phantomInventory } from "@/mocks/phantomData";
 import { createClient } from "@/lib/supabase/server";
+import { withHardening } from "@/lib/auth/server-auth";
+import { InventorySchema } from "@/lib/validation/schemas";
+
+type InventoryPayload = z.infer<typeof InventorySchema>;
 
 // ============================================================================
 // GET /api/inventory — List inventory with optional filters
 // ============================================================================
-export async function GET(request: NextRequest) {
-  const { searchParams } = request.nextUrl;
+export const GET = withHardening(async (req, session) => {
+  const { searchParams } = req.nextUrl;
   const condition = searchParams.get("condition");
   const platform = searchParams.get("platform");
   const legendary = searchParams.get("legendary");
@@ -41,7 +46,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return Response.json({
+    return NextResponse.json({
       data: items,
       count: items.length,
       totalValue: items.reduce((sum, i) => sum + i.market_value * i.stock_count, 0),
@@ -49,13 +54,15 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // Production mode — query Supabase
+  // Production mode — query Supabase scoped to the user's organization
   try {
     const supabase = await createClient();
+    const orgId = session.dbUser.organization_id;
 
     let query = supabase
       .from("inventory")
       .select("*")
+      .eq("organization_id", orgId)
       .order("created_at", { ascending: false });
 
     if (condition && condition !== "ALL") {
@@ -82,14 +89,14 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error("[inventory:GET] Supabase error:", error.message);
-      return Response.json(
+      return NextResponse.json(
         { error: "Failed to fetch inventory" },
         { status: 500 }
       );
     }
 
     const items = data || [];
-    return Response.json({
+    return NextResponse.json({
       data: items,
       count: items.length,
       totalValue: items.reduce((sum: number, i: { market_value: number; stock_count: number }) => sum + (i.market_value || 0) * (i.stock_count || 0), 0),
@@ -97,64 +104,61 @@ export async function GET(request: NextRequest) {
     });
   } catch (err) {
     console.error("[inventory:GET] Unexpected error:", err);
-    return Response.json(
+    return NextResponse.json(
       { error: "Failed to fetch inventory" },
       { status: 500 }
     );
   }
-}
+}, {
+  rateLimit: { key: 'inventory-list', maxRequests: 60, windowMs: 60_000 },
+});
 
 // ============================================================================
 // POST /api/inventory — Create new inventory item
+// Staff+ role, validated body, rate limited to 30/min
 // ============================================================================
-export async function POST(request: NextRequest) {
-  const demoMode = await isDemoModeServer(new URL(request.url).searchParams);
+export const POST = withHardening(async (req, session) => {
+  const demoMode = await isDemoModeServer(req.nextUrl.searchParams);
+  // Validated and parsed by withHardening via InventorySchema
+  const body = (req as unknown as { validatedData: InventoryPayload }).validatedData;
 
+  // Demo mode — create phantom item
+  if (demoMode) {
+    const newItem = {
+      id: `inv-${Date.now()}`,
+      organization_id: session.dbUser.organization_id,
+      item_name: body.item_name,
+      platform: body.platform || null,
+      condition: body.condition || "LOOSE",
+      market_value: body.market_value || 0,
+      our_price: body.our_price || null,
+      scrap_value: body.scrap_value || 0,
+      stock_count: body.stock_count || 1,
+      is_legendary: (body.market_value || 0) >= 150,
+      price_spike_flag: false,
+      tags: body.tags || [],
+      image_url: body.image_url || null,
+      scanned_image_url: null,
+      pricecharting_id: null,
+      last_price_sync: null,
+      status: "ACTIVE" as const,
+      notes: body.notes || null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    return NextResponse.json({ data: newItem, source: "demo" }, { status: 201 });
+  }
+
+  // Production mode — insert into Supabase scoped to the user's organization
   try {
-    const body = await request.json();
-
-    // Basic validation
-    if (!body.item_name) {
-      return Response.json(
-        { error: "item_name is required" },
-        { status: 400 }
-      );
-    }
-
-    // Demo mode — create phantom item
-    if (demoMode) {
-      const newItem = {
-        id: `inv-${Date.now()}`,
-        organization_id: "demo-time-warp-001",
-        item_name: body.item_name,
-        platform: body.platform || null,
-        condition: body.condition || "LOOSE",
-        market_value: body.market_value || 0,
-        our_price: body.our_price || null,
-        scrap_value: body.scrap_value || 0,
-        stock_count: body.stock_count || 1,
-        is_legendary: (body.market_value || 0) >= 150,
-        price_spike_flag: false,
-        tags: body.tags || [],
-        image_url: body.image_url || null,
-        scanned_image_url: null,
-        pricecharting_id: null,
-        last_price_sync: null,
-        status: "ACTIVE" as const,
-        notes: body.notes || null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-
-      return Response.json({ data: newItem, source: "demo" }, { status: 201 });
-    }
-
-    // Production mode — insert into Supabase
     const supabase = await createClient();
+    const orgId = session.dbUser.organization_id;
 
     const { data, error } = await supabase
       .from("inventory")
       .insert({
+        organization_id: orgId,
         item_name: body.item_name,
         platform: body.platform || null,
         condition: body.condition || "LOOSE",
@@ -171,18 +175,22 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error("[inventory:POST] Supabase error:", error.message);
-      return Response.json(
+      return NextResponse.json(
         { error: "Failed to create inventory item" },
         { status: 500 }
       );
     }
 
-    return Response.json({ data, source: "production" }, { status: 201 });
+    return NextResponse.json({ data, source: "production" }, { status: 201 });
   } catch (err) {
     console.error("[inventory:POST] Unexpected error:", err);
-    return Response.json(
+    return NextResponse.json(
       { error: "Invalid request" },
       { status: 400 }
     );
   }
-}
+}, {
+  schema: InventorySchema,
+  roles: ['owner', 'admin', 'staff'],
+  rateLimit: { key: 'inventory-create', maxRequests: 30, windowMs: 60_000 },
+});

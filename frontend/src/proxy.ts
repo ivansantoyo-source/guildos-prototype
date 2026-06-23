@@ -24,7 +24,17 @@ export async function proxy(request: NextRequest) {
   const demoParam = url.searchParams.get('demo');
   const hasDemoCookie = cookieHeader.includes('guildos_demo_mode=true');
   const hasDemoFalseCookie = cookieHeader.includes('guildos_demo_mode=false');
-  const envDemoDefault = process.env.NEXT_PUBLIC_DEMO_MODE !== 'false';
+  const envDemoDefault = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
+
+  // **Production safety guard**: warn but do NOT crash — crashing would break
+  // Vercel preview deployments that don't inherit production env vars.
+  // The safe default `=== 'true'` already ensures disabled-on-unset behavior.
+  if (process.env.NODE_ENV === 'production' && process.env.NEXT_PUBLIC_DEMO_MODE === undefined) {
+    console.warn(
+      '[proxy] WARNING: NEXT_PUBLIC_DEMO_MODE is not set. Defaulting to disabled (safe). ' +
+      'Set it to "true" or "false" explicitly to suppress this warning.'
+    );
+  }
 
   // Explicit URL param takes precedence
   let isDemoRequest: boolean;
@@ -43,22 +53,11 @@ export async function proxy(request: NextRequest) {
     isDemoRequest = envDemoDefault;
   }
 
-  // If demo cookie exists but URL doesn't reflect it, redirect to sync URL
-  // This ensures the URL bar always shows the correct state
-  if (isDemoRequest && demoParam !== 'true' && !url.pathname.startsWith('/api/') && !url.pathname.startsWith('/_next/')) {
-    const demoUrl = url.clone();
-    demoUrl.searchParams.set('demo', 'true');
-    return NextResponse.redirect(demoUrl);
-  }
-
-  // If demo was explicitly disabled but URL still has ?demo=true, clean it up
-  if (!isDemoRequest && demoParam === 'true' && !url.pathname.startsWith('/api/') && !url.pathname.startsWith('/_next/')) {
-    const cleanUrl = url.clone();
-    cleanUrl.searchParams.delete('demo');
-    return NextResponse.redirect(cleanUrl);
-  }
-
   // --- 1. Supabase Session Refresh (skip in demo — no auth needed) ---
+  // NOTE: We do NOT redirect to sync ?demo=true onto the URL here.
+  // The cookie is set silently and the client-side demoHref() utility
+  // handles URL synchronization without navigation disruption.
+  // Removing this redirect eliminates ~200-400ms of redirect latency per page load.
   let response = NextResponse.next({
     request: {
       headers: request.headers,
@@ -130,8 +129,8 @@ export async function proxy(request: NextRequest) {
   // --- 3. Protected Routes (auth gate — skipped in demo mode) ---
   if (!isDemoRequest && supabaseUrl && supabaseAnonKey) {
     const protectedPaths = [
-      '/dashboard', '/inventory', '/bounty-board', '/nexus',
-      '/shopkeeper', '/analytics', '/profile', '/settings',
+      '/dashboard', '/inventory', '/pos', '/bounty-board', '/nexus',
+      '/shopkeeper', '/agent', '/analytics', '/profile', '/settings',
     ];
     const isProtectedRoute = protectedPaths.some((path) =>
       url.pathname.startsWith(path)

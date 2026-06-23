@@ -4,7 +4,8 @@
 
 -- Schema & Extensions
 CREATE SCHEMA IF NOT EXISTS guildos_core;
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public;
+-- NOTE: uuid-ossp extension intentionally removed — gen_random_uuid() (from pgcrypto)
+-- is the PG13+ built-in replacement for uuid_generate_v4().
 CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA public;
 
 SET search_path TO guildos_core;
@@ -18,7 +19,7 @@ $$ LANGUAGE SQL STABLE;
 -- Core Tables
 
 CREATE TABLE guildos_core.organizations (
-    id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
     subdomain TEXT UNIQUE NOT NULL,
     custom_domain TEXT UNIQUE,
@@ -54,8 +55,8 @@ CREATE TABLE guildos_core.profiles (
 );
 
 CREATE TABLE guildos_core.inventory (
-    id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
-    organization_id UUID REFERENCES guildos_core.organizations(id) ON DELETE RESTRICT,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID REFERENCES guildos_core.organizations(id) ON DELETE CASCADE,
     item_name TEXT NOT NULL,
     platform TEXT,
     condition TEXT CHECK (condition IN ('NEW', 'CIB', 'LOOSE', 'SCRAP')),
@@ -77,8 +78,8 @@ CREATE TABLE guildos_core.inventory (
 );
 
 CREATE TABLE guildos_core.bounties (
-    id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
-    organization_id UUID REFERENCES guildos_core.organizations(id) ON DELETE RESTRICT,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID REFERENCES guildos_core.organizations(id) ON DELETE CASCADE,
     target_item_name TEXT NOT NULL,
     platform TEXT,
     base_market_price NUMERIC(19, 4) DEFAULT 0,
@@ -94,7 +95,7 @@ CREATE TABLE guildos_core.bounties (
 );
 
 CREATE TABLE guildos_core.nexus_lfgs (
-    id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID REFERENCES guildos_core.organizations(id) ON DELETE RESTRICT,
     creator_id UUID REFERENCES guildos_core.profiles(id),
     game_title TEXT NOT NULL,
@@ -110,7 +111,7 @@ CREATE TABLE guildos_core.nexus_lfgs (
 );
 
 CREATE TABLE guildos_core.nexus_lfg_participants (
-    id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     lfg_id UUID REFERENCES guildos_core.nexus_lfgs(id) ON DELETE CASCADE,
     profile_id UUID REFERENCES guildos_core.profiles(id),
     joined_at TIMESTAMPTZ DEFAULT NOW(),
@@ -118,8 +119,8 @@ CREATE TABLE guildos_core.nexus_lfg_participants (
 );
 
 CREATE TABLE guildos_core.nexus_scoreboards (
-    id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
-    organization_id UUID REFERENCES guildos_core.organizations(id) ON DELETE RESTRICT,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID REFERENCES guildos_core.organizations(id) ON DELETE CASCADE,
     cabinet_name TEXT NOT NULL,
     game_title TEXT NOT NULL,
     player_tag TEXT NOT NULL,
@@ -132,7 +133,7 @@ CREATE TABLE guildos_core.nexus_scoreboards (
 );
 
 CREATE TABLE guildos_core.nexus_save_rooms (
-    id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID REFERENCES guildos_core.organizations(id) ON DELETE RESTRICT,
     room_name TEXT NOT NULL,
     description TEXT,
@@ -147,8 +148,8 @@ CREATE TABLE guildos_core.nexus_save_rooms (
 );
 
 CREATE TABLE guildos_core.faction_standings (
-    id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
-    organization_id UUID REFERENCES guildos_core.organizations(id) ON DELETE RESTRICT,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID REFERENCES guildos_core.organizations(id) ON DELETE CASCADE,
     month INTEGER NOT NULL CHECK (month BETWEEN 1 AND 12),
     year INTEGER NOT NULL,
     faction TEXT NOT NULL CHECK (faction IN ('SEGA_SYNDICATE', 'NINTENDO_NOMADS', 'SONY_SENTINELS')),
@@ -160,16 +161,16 @@ CREATE TABLE guildos_core.faction_standings (
 );
 
 CREATE TABLE guildos_core.price_history (
-    id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     inventory_id UUID REFERENCES guildos_core.inventory(id) ON DELETE CASCADE,
-    organization_id UUID REFERENCES guildos_core.organizations(id) ON DELETE RESTRICT,
+    organization_id UUID REFERENCES guildos_core.organizations(id) ON DELETE CASCADE,
     market_value NUMERIC(19, 4) NOT NULL,
     source TEXT DEFAULT 'pricecharting',
     recorded_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE TABLE guildos_core.blacklist_entries (
-    id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     reported_by_org UUID REFERENCES guildos_core.organizations(id) ON DELETE RESTRICT,
     hashed_id TEXT NOT NULL,
     geo_lat NUMERIC(10, 7),
@@ -182,9 +183,9 @@ CREATE TABLE guildos_core.blacklist_entries (
 );
 
 CREATE TABLE guildos_core.notifications (
-    id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
-    organization_id UUID REFERENCES guildos_core.organizations(id) ON DELETE RESTRICT,
-    user_id UUID REFERENCES guildos_core.profiles(id),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID REFERENCES guildos_core.organizations(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES guildos_core.profiles(id) ON DELETE CASCADE,
     type TEXT NOT NULL CHECK (type IN (
         'PRICE_SPIKE', 'BOUNTY_FULFILLED', 'SCORE_DETHRONED',
         'ORACLE_MATCH', 'GRAIL_DROP', 'FACTION_WIN',
@@ -198,8 +199,8 @@ CREATE TABLE guildos_core.notifications (
 );
 
 CREATE TABLE guildos_core.discount_codes (
-    id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
-    organization_id UUID REFERENCES guildos_core.organizations(id) ON DELETE RESTRICT,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID REFERENCES guildos_core.organizations(id) ON DELETE CASCADE,
     code TEXT NOT NULL,
     discount_percent NUMERIC(5, 2) DEFAULT 10.00,
     source TEXT DEFAULT 'KONAMI' CHECK (source IN ('KONAMI', 'FACTION_WIN', 'PROMOTION', 'MANUAL')),

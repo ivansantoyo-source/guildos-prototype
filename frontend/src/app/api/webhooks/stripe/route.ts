@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import Stripe from 'stripe';
 import { createClient } from '@/lib/supabase/server';
+import { rateLimit } from '@/lib/security/rate-limit';
 
 /**
  * Stripe Webhook Handler
@@ -21,9 +22,18 @@ import { createClient } from '@/lib/supabase/server';
  *   If merchants bring their own Stripe accounts, each would need a unique
  *   webhook path for per-tenant secret resolution. For the MVP this handler
  *   uses the platform-level Stripe keys (process.env.STRIPE_*).
+ *
+ * Rate limited by Stripe signature (60/min) — no auth required since Stripe
+ * calls this webhook directly and verifies via webhook secret.
  */
 export async function POST(request: NextRequest) {
-  const signature = request.headers.get('stripe-signature');
+  // Rate limit: 60/min per Stripe signature + IP
+  const stripeIp = request.headers.get('x-forwarded-for') || 'stripe-webhook';
+  const signature = request.headers.get('stripe-signature') || '';
+  const rlKey = `stripe-webhook-${signature.slice(0, 16)}-${stripeIp}`;
+  if (await rateLimit(rlKey, { maxRequests: 60, windowMs: 60_000 })) {
+    return Response.json({ error: 'Too many requests' }, { status: 429 });
+  }
 
   try {
     const body = await request.text();
@@ -56,11 +66,42 @@ export async function POST(request: NextRequest) {
     // ======================================================================
     switch (event.type) {
       // --------------------------------------------------------------------
-      // checkout.session.completed — Activate subscription
-      // Expects metadata: { organization_id, tier }
+      // checkout.session.completed — Activate subscription or lobby payment
+      // Subscription: expects metadata { organization_id, tier }
+      // Lobby split-pay: expects metadata { lobby_id, participant_id }
       // --------------------------------------------------------------------
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
+
+        // Lobby split-pay checkout — update participant payment status
+        if (session.metadata?.lobby_id) {
+          const lobbyId = session.metadata.lobby_id;
+          const participantId = session.metadata.participant_id;
+
+          if (participantId && lobbyId) {
+            const paymentIntent = session.payment_intent as string | undefined;
+
+            await supabase
+              .from('nexus_lfg_participants')
+              .update({
+                payment_status: 'PAID',
+                payment_intent_id: paymentIntent || null,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', participantId);
+
+            console.log(
+              `[webhook:stripe] Lobby payment completed — participant ${participantId} in lobby ${lobbyId}`
+            );
+          } else {
+            console.warn(
+              '[webhook:stripe] checkout.session.completed missing lobby participant metadata'
+            );
+          }
+          break;
+        }
+
+        // Subscription activation (existing behavior)
         const organizationId = session.metadata?.organization_id;
         const customerId = session.customer as string | undefined;
         const subscriptionId = session.subscription as string | undefined;
@@ -84,6 +125,88 @@ export async function POST(request: NextRequest) {
           console.warn(
             '[webhook:stripe] checkout.session.completed missing metadata (organization_id, customer, subscription)'
           );
+        }
+        break;
+      }
+
+      // --------------------------------------------------------------------
+      // payment_intent.succeeded — Update participant payment status to PAID
+      // Expects metadata { lobby_id, participant_id }
+      // --------------------------------------------------------------------
+      case 'payment_intent.succeeded': {
+        const pi = event.data.object as Stripe.PaymentIntent;
+        const lobbyId = pi.metadata?.lobby_id;
+        const participantId = pi.metadata?.participant_id;
+
+        if (participantId && lobbyId) {
+          await supabase
+            .from('nexus_lfg_participants')
+            .update({
+              payment_status: 'PAID',
+              payment_intent_id: pi.id,
+              amount_paid: (pi.amount_received || 0) / 100,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', participantId);
+
+          console.log(
+            `[webhook:stripe] Payment succeeded — participant ${participantId} in lobby ${lobbyId}`
+          );
+        }
+        break;
+      }
+
+      // --------------------------------------------------------------------
+      // payment_intent.payment_failed — Mark participant payment as FAILED
+      // --------------------------------------------------------------------
+      case 'payment_intent.payment_failed': {
+        const piFailed = event.data.object as Stripe.PaymentIntent;
+        const piLobbyId = piFailed.metadata?.lobby_id;
+        const piParticipantId = piFailed.metadata?.participant_id;
+
+        if (piParticipantId && piLobbyId) {
+          await supabase
+            .from('nexus_lfg_participants')
+            .update({
+              payment_status: 'FAILED',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', piParticipantId);
+
+          console.log(
+            `[webhook:stripe] Payment failed — participant ${piParticipantId} in lobby ${piLobbyId}`
+          );
+        }
+        break;
+      }
+
+      // --------------------------------------------------------------------
+      // charge.refunded — Mark participant as REFUNDED
+      // --------------------------------------------------------------------
+      case 'charge.refunded': {
+        const charge = event.data.object as Stripe.Charge;
+        const paymentIntentId = charge.payment_intent as string | undefined;
+
+        if (paymentIntentId) {
+          const { data: participants } = await supabase
+            .from('nexus_lfg_participants')
+            .select('id')
+            .eq('payment_intent_id', paymentIntentId)
+            .limit(1);
+
+          if (participants && participants.length > 0) {
+            await supabase
+              .from('nexus_lfg_participants')
+              .update({
+                payment_status: 'REFUNDED',
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', participants[0].id);
+
+            console.log(
+              `[webhook:stripe] Charge refunded for payment intent ${paymentIntentId} — participant ${participants[0].id}`
+            );
+          }
         }
         break;
       }

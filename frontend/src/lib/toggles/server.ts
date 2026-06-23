@@ -32,6 +32,6 @@ export async function isDemoModeServer(searchParams?: URLSearchParams): Promise<
     // cookies() only works in App Router context
   }
 
-  // 3. Fall back to env var (default)
-  return process.env.NEXT_PUBLIC_DEMO_MODE !== 'false';
+  // 3. Fall back to env var (default — only demo when explicitly 'true')
+  return process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
 }

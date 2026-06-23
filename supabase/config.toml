@@ -29,5 +29,50 @@ site_url = "http://localhost:3000"
 additional_redirect_urls = ["https://*.guildos.com"]
 enable_signup = true
 
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = false
+
+# ============================================================================
+# SMTP Configuration — Production relay (set real values via Dashboard or env)
+# ============================================================================
+# [auth.email.smtp]
+# host     = "smtp.resend.com"
+# port     = 465
+# user     = "resend"
+# pass     = "your_resend_api_key"
+# admin_email = "noreply@guildos.com"
+# admin_name  = "GuildOS"
+
+# ============================================================================
+# Email Templates — Custom GuildOS-branded templates
+# ============================================================================
+# These templates MUST be applied via the Supabase Dashboard at:
+#   https://supabase.com/dashboard/project/tyustwqwvjmzvuazfwkv/auth/templates
+#
+# The local HTML files are in supabase/email-templates/ for reference.
+# The config.toml template paths only apply to local `supabase start` dev.
+
+[auth.email.template.magic_link]
+subject = "Sign in to GuildOS"
+content_path = "supabase/email-templates/magic-link.html"
+
+[auth.email.template.confirmation]
+subject = "Confirm your GuildOS account"
+content_path = "supabase/email-templates/confirmation.html"
+
+[auth.email.template.invite]
+subject = "You're invited to GuildOS"
+content_path = "supabase/email-templates/invite.html"
+
+[auth.email.template.email_change]
+subject = "Confirm email change — GuildOS"
+content_path = "supabase/email-templates/email-change.html"
+
+[auth.email.template.recovery]
+subject = "Reset your GuildOS password"
+content_path = "supabase/email-templates/recovery.html"
+
 [realtime]
 enabled = true

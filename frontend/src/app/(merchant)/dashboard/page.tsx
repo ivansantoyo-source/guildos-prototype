@@ -2,9 +2,17 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useGuildStore } from "@/lib/store/useGuildStore";
 import { demoHref } from "@/lib/utils/url";
+import { TavernErrorBoundary } from "@/components/tavern/error-boundary";
 import type { ActivityEvent, DashboardStats, FactionStanding } from "@/lib/types";
+
+// Lazy load LiveMap — ~50KB component, only needed when user scrolls to tavern section
+const LiveMap = dynamic(() => import("@/components/tavern/live-map"), {
+  loading: () => <LiveMapSkeleton />,
+  ssr: false,
+});
 
 // ============================================================
 // DATE RANGE FILTER TYPES
@@ -301,7 +309,7 @@ function ActivityFeed({ events }: { events: ActivityEvent[] }) {
         <h3 className="text-xs font-medium uppercase tracking-wider text-primary/70">Live Activity</h3>
         <span className="w-2 h-2 rounded-full bg-primary animate-neon-pulse" />
       </div>
-      <div className="space-y-3 max-h-64 overflow-y-auto">
+      <div className="space-y-3">
         {events.length === 0 ? (
           <p className="text-xs text-muted-foreground text-center py-4">No recent activity.</p>
         ) : (
@@ -461,33 +469,29 @@ export default function DashboardPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [hasLoaded, setHasLoaded] = useState(false);
 
-  // Simulated loading on mount
+  // Data-driven loading: render immediately when store data exists, empty state when none
+  const hasData = useMemo(() => {
+    return stats.goldFarmed > 0 || activityFeed.length > 0 || inventory.length > 0 || factionStandings.length > 0;
+  }, [stats.goldFarmed, activityFeed.length, inventory.length, factionStandings.length]);
+
   useEffect(() => {
-    const timer = setTimeout(() => {
+    if (hasData) {
       setIsLoading(false);
       setHasLoaded(true);
-    }, 800);
-    return () => clearTimeout(timer);
-  }, []);
+    } else {
+      // No cached data — show empty state immediately, no artificial timeout
+      setIsLoading(false);
+    }
+  }, [hasData]);
 
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
     setLoadError(null);
-    // Simulate a refresh with potential error
-    setTimeout(() => {
-      // Import phantom data for refresh
-      const { phantomDashboardStats, phantomActivity } = require("@/mocks/phantomData");
-      setDashboardStats(phantomDashboardStats);
-      setActivityFeed(phantomActivity);
-      setIsRefreshing(false);
-    }, 1200);
-    // Simulate occasional error
-    if (Math.random() < 0.05) {
-      setTimeout(() => {
-        setLoadError("Network timeout while fetching dashboard data.");
-        setIsRefreshing(false);
-      }, 2000);
-    }
+    // Load phantom data immediately — no artificial delay
+    const { phantomDashboardStats, phantomActivity } = require("@/mocks/phantomData");
+    setDashboardStats(phantomDashboardStats);
+    setActivityFeed(phantomActivity);
+    setIsRefreshing(false);
   }, [setDashboardStats, setActivityFeed]);
 
   // Compute derived values
@@ -636,6 +640,61 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Live Tavern — interactive station map */}
+      <LiveTavernSection />
+    </div>
+  );
+}
+
+// ============================================================
+// LIVE MAP SKELETON (shown while LiveMap is loading)
+// ============================================================
+function LiveMapSkeleton() {
+  return (
+    <div className="guild-card bg-card rounded-lg p-6 border-border/20 animate-pulse">
+      <div className="flex items-center justify-between mb-4">
+        <div className="space-y-2">
+          <div className="h-4 w-32 bg-muted rounded" />
+          <div className="h-3 w-24 bg-muted rounded" />
+        </div>
+        <div className="h-8 w-28 bg-muted rounded" />
+      </div>
+      <div className="h-64 bg-muted/50 rounded-lg" />
+    </div>
+  );
+}
+
+// ============================================================
+// LIVE TAVERN SECTION
+// ============================================================
+function LiveTavernSection() {
+  const stations = useGuildStore((s) => s.stations);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-bold text-primary">🎪 Live Tavern</h2>
+          <p className="text-xs text-muted-foreground">
+            {stations.length} stations · {stations.filter((s) => s.status === "AVAILABLE").length} available
+          </p>
+        </div>
+        <Link
+          href={demoHref("/nexus")}
+          className="px-3 py-1.5 text-xs rounded border border-primary/20 text-primary hover:bg-primary/10 transition-colors"
+        >
+          View Full Map →
+        </Link>
+      </div>
+      <TavernErrorBoundary>
+        <LiveMap
+          stations={stations}
+          onStationClick={(station) => {
+            console.log("[Dashboard] Station clicked:", station.name);
+          }}
+        />
+      </TavernErrorBoundary>
     </div>
   );
 }

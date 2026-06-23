@@ -182,6 +182,9 @@ function PricingSection() {
       <div className="flex items-center justify-center gap-3 mb-10">
         <span className={`text-xs ${!yearly ? "text-foreground font-bold" : "text-muted-foreground"}`}>Monthly</span>
         <button
+          role="switch"
+          aria-checked={yearly}
+          aria-label="Toggle yearly billing"
           onClick={() => setYearly(!yearly)}
           className={`w-12 h-6 rounded-full transition-colors ${yearly ? "bg-primary" : "bg-muted"} relative`}
         >
@@ -269,7 +272,7 @@ function TrustedBy() {
 // ============================================================
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div id="main-content" className="min-h-screen bg-background text-foreground">
       {/* === HERO === */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-primary/5 via-transparent to-transparent pointer-events-none" />

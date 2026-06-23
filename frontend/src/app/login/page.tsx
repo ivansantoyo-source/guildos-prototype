@@ -1,191 +1,345 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import type { Faction } from "@/lib/types";
 
-const FACTIONS: { id: Faction; name: string; icon: string; color: string; border: string; bg: string; desc: string; members: number }[] = [
-  { id: "SEGA_SYNDICATE", name: "Sega Syndicate", icon: "🔵", color: "text-faction-sega", border: "border-faction-sega/40", bg: "bg-faction-sega/10", desc: "Speed, style, and the 16-bit wars", members: 1240 },
-  { id: "NINTENDO_NOMADS", name: "Nintendo Nomads", icon: "🔴", color: "text-faction-nintendo", border: "border-faction-nintendo/40", bg: "bg-faction-nintendo/10", desc: "Quality, nostalgia, and iconic IPs", members: 1560 },
-  { id: "SONY_SENTINELS", name: "Sony Sentinels", icon: "🟣", color: "text-faction-sony", border: "border-faction-sony/40", bg: "bg-faction-sony/10", desc: "Innovation, 3D era, and JRPGs", members: 980 },
-];
-
-// Password strength meter
-function PasswordStrength({ password }: { password: string }) {
-  const strength = useMemo(() => {
-    let score = 0;
-    if (password.length >= 8) score++;
-    if (password.length >= 12) score++;
-    if (/[A-Z]/.test(password)) score++;
-    if (/[a-z]/.test(password)) score++;
-    if (/[0-9]/.test(password)) score++;
-    if (/[^A-Za-z0-9]/.test(password)) score++;
-    return score;
-  }, [password]);
-
-  if (!password) return null;
-
-  const labels = ["Very Weak", "Weak", "Fair", "Good", "Strong", "Very Strong"];
-  const colors = [
-    "bg-destructive",
-    "bg-destructive/70",
-    "bg-gold/70",
-    "bg-gold",
-    "bg-xp",
-    "bg-primary",
-  ];
-
-  return (
-    <div className="mt-1">
-      <div className="flex gap-1 h-1">
-        {[0, 1, 2, 3, 4, 5].map((i) => (
-          <div key={i} className={`flex-1 rounded-full transition-all ${i <= strength ? colors[strength] : "bg-muted"}`} />
-        ))}
-      </div>
-      <p className="text-[10px] text-muted-foreground mt-0.5">
-        {labels[strength] || "Weak"}
-      </p>
-    </div>
-  );
-}
+type FlowState = "idle" | "sending" | "sent" | "code_input" | "verifying" | "error";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [isRegister, setIsRegister] = useState(false);
-  const [selectedFaction, setSelectedFaction] = useState<Faction | null>(null);
+
+  // Flow state
+  const [flowState, setFlowState] = useState<FlowState>("idle");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showForgotPassword, setShowForgotPassword] = useState(false);
-  const [forgotEmail, setForgotEmail] = useState("");
-  const [forgotSent, setForgotSent] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [signupSuccess, setSignupSuccess] = useState(false);
+  const [isDemo, setIsDemo] = useState(false);
 
-  // Faction animation on selection
-  const [animatingFaction, setAnimatingFaction] = useState<Faction | null>(null);
+  // OTP input
+  const [otpDigits, setOtpDigits] = useState<string[]>(Array(6).fill(""));
+  const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setIsSubmitting(true);
+  // Cooldown timer (resend disabled for 60s)
+  const [cooldown, setCooldown] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
-    const supabase = createClient();
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
 
-    if (isRegister) {
-      const { error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: { faction: selectedFaction },
-        },
-      });
-      if (signUpError) {
-        setError(signUpError.message);
-        setIsSubmitting(false);
-        return;
-      }
-      setSignupSuccess(true);
-      setIsSubmitting(false);
-    } else {
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      if (signInError) {
-        setError(signInError.message);
-        setIsSubmitting(false);
-        return;
-      }
-      router.push("/dashboard");
+  // Countdown effect — fires when cooldown changes from 0 to >0
+  useEffect(() => {
+    if (cooldown > 0) {
+      timerRef.current = setInterval(() => {
+        setCooldown((prev) => {
+          if (prev <= 1) {
+            if (timerRef.current) clearInterval(timerRef.current);
+            timerRef.current = undefined;
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
     }
-  };
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+    // We intentionally only trigger when cooldown goes from 0 to >0
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flowState]);
 
-  const handleFactionSelect = (id: Faction) => {
-    setSelectedFaction(id);
-    setAnimatingFaction(id);
-    setTimeout(() => setAnimatingFaction(null), 600);
-  };
-
-  const handleForgotPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    if (!forgotEmail.trim()) return;
-
-    const supabase = createClient();
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(
-      forgotEmail,
-      { redirectTo: `${window.location.origin}/login` }
-    );
-    if (resetError) {
-      setError(resetError.message);
+  // ================================================================
+  // Send magic link / OTP email
+  // ================================================================
+  const handleSendMagicLink = async () => {
+    if (!email.trim()) {
+      setError("Please enter your email address.");
       return;
     }
-    setForgotSent(true);
+    setError(null);
+    setFlowState("sending");
+
+    try {
+      const res = await fetch("/api/auth/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (res.status === 429) {
+          setError(data.error || "Please wait before requesting a new code.");
+          setCooldown(60);
+        } else {
+          setError(data.error || "Failed to send verification code. Please try again.");
+        }
+        setFlowState("idle");
+        return;
+      }
+
+      // Demo mode: pre-fill OTP for testing
+      if (data.demoOtp) {
+        const digits = data.demoOtp.split("");
+        setOtpDigits(digits);
+        setIsDemo(true);
+      }
+
+      setFlowState("sent");
+      setCooldown(60);
+    } catch {
+      setError("Network error. Please check your connection and try again.");
+      setFlowState("idle");
+    }
   };
 
-  // Forgot password flow
-  if (showForgotPassword) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-legendary/5 pointer-events-none" />
-        <div className="relative w-full max-w-md mx-4">
-          <div className="text-center mb-8">
-            <Link href="/" className="inline-flex items-center gap-2">
-              <span className="text-3xl">🎮</span>
-              <span className="text-2xl font-bold text-primary text-glow-green tracking-wider">GUILD_OS</span>
-            </Link>
-          </div>
+  // ================================================================
+  // Switch to code input mode (resends OTP)
+  // ================================================================
+  const handleTryCode = async () => {
+    if (cooldown > 0) {
+      setError(`Please wait ${cooldown}s before requesting a new code.`);
+      return;
+    }
 
-          <div className="guild-card bg-card rounded-xl p-6 border-primary/20">
-            {forgotSent ? (
-              <div className="text-center py-4">
-                <span className="text-5xl block mb-4">📧</span>
-                <h2 className="text-sm font-bold text-primary mb-2">Email Sent!</h2>
-                <p className="text-xs text-muted-foreground mb-4">
-                  If an account exists for <span className="text-primary">{forgotEmail}</span>, you&apos;ll receive password reset instructions.
-                </p>
-                <button onClick={() => { setShowForgotPassword(false); setForgotSent(false); setForgotEmail(""); }}
-                  className="text-xs text-primary hover:underline">
-                  Back to Sign In
-                </button>
-              </div>
-            ) : (
-              <form onSubmit={handleForgotPassword} className="space-y-4">
-                <h2 className="text-sm font-bold text-primary">🔑 Reset Password</h2>
-                <p className="text-xs text-muted-foreground">Enter your email and we&apos;ll send you recovery instructions.</p>
-                <div>
-                  <label className="text-[11px] text-muted-foreground uppercase tracking-wider">Email</label>
-                  <input type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)}
-                    placeholder="merchant@guildos.com"
-                    className="mt-1 w-full px-3 py-2.5 text-sm bg-background border border-border rounded guild-input text-foreground placeholder:text-muted-foreground" />
-                </div>
-                {error && (
-                  <div className="p-2 rounded bg-destructive/10 border border-destructive/30">
-                    <p className="text-xs text-destructive">{error}</p>
-                  </div>
-                )}
-                <button type="submit" disabled={!forgotEmail.trim()}
-                  className="w-full py-3 rounded-lg bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-all disabled:opacity-50">
-                  SEND RESET LINK
-                </button>
-                <p className="text-xs text-muted-foreground text-center">
-                  <button type="button" onClick={() => setShowForgotPassword(false)} className="text-primary hover:underline">
-                    Back to Sign In
-                  </button>
-                </p>
-              </form>
-            )}
-          </div>
+    setError(null);
+
+    // Silently resend the OTP (don't show loading since they already got the email)
+    try {
+      await fetch("/api/auth/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+    } catch {
+      // Non-blocking — the first send already triggered the email
+    }
+
+    setFlowState("code_input");
+    setCooldown(60);
+    // Focus first OTP box
+    setTimeout(() => otpRefs.current[0]?.focus(), 100);
+  };
+
+  // ================================================================
+  // OTP input handlers
+  // ================================================================
+  const handleOtpChange = (index: number, value: string) => {
+    // Handle paste: if pasted value is multiple characters
+    if (value.length > 1) {
+      const digits = value.replace(/\D/g, "").split("").slice(0, 6);
+      const newDigits = [...otpDigits];
+      digits.forEach((d, i) => {
+        if (i < 6) newDigits[i] = d;
+      });
+      setOtpDigits(newDigits);
+
+      // Focus the next empty slot or the last slot
+      const nextEmpty = newDigits.findIndex((d) => d === "");
+      const focusIdx = nextEmpty === -1 ? 5 : nextEmpty;
+      otpRefs.current[focusIdx]?.focus();
+      return;
+    }
+
+    // Only allow single digit
+    if (value && !/^\d$/.test(value)) return;
+
+    const newDigits = [...otpDigits];
+    newDigits[index] = value;
+    setOtpDigits(newDigits);
+
+    // Auto-advance to next input
+    if (value && index < 5) {
+      otpRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    // Backspace on empty field → go back
+    if (e.key === "Backspace" && !otpDigits[index] && index > 0) {
+      otpRefs.current[index - 1]?.focus();
+    }
+    // Left arrow
+    if (e.key === "ArrowLeft" && index > 0) {
+      otpRefs.current[index - 1]?.focus();
+    }
+    // Right arrow
+    if (e.key === "ArrowRight" && index < 5) {
+      otpRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleOtpPaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const pastedText = e.clipboardData.getData("text");
+    const digits = pastedText.replace(/\D/g, "").split("").slice(0, 6);
+
+    if (digits.length === 0) return;
+
+    const newDigits = [...otpDigits];
+    digits.forEach((d, i) => {
+      if (i < 6) newDigits[i] = d;
+    });
+    setOtpDigits(newDigits);
+
+    const nextEmpty = newDigits.findIndex((d) => d === "");
+    const focusIdx = nextEmpty === -1 ? 5 : nextEmpty;
+    otpRefs.current[focusIdx]?.focus();
+  };
+
+  // ================================================================
+  // Verify OTP code
+  // ================================================================
+  const handleVerifyOtp = async () => {
+    const code = otpDigits.join("");
+    if (code.length !== 6) {
+      setError("Please enter the complete 6-digit code.");
+      return;
+    }
+
+    setError(null);
+    setFlowState("verifying");
+
+    try {
+      const res = await fetch("/api/auth/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), token: code }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (res.status === 429) {
+          setError("Too many verification attempts. Please wait a moment.");
+        } else if (res.status === 401) {
+          setError(data.error || "Invalid or expired code. Please request a new one.");
+          // Reset OTP digits for retry
+          setOtpDigits(Array(6).fill(""));
+          setFlowState("code_input");
+          setTimeout(() => otpRefs.current[0]?.focus(), 100);
+        } else {
+          setError(data.error || "Verification failed. Please try again.");
+        }
+        return;
+      }
+
+      // Success! Redirect based on whether user is new
+      if (data.isNewUser && !data.isDemo) {
+        router.push("/onboarding");
+      } else {
+        router.push("/dashboard");
+      }
+    } catch {
+      setError("Network error. Please check your connection and try again.");
+      setFlowState("code_input");
+    }
+  };
+
+  // ================================================================
+  // OAuth sign-in
+  // ================================================================
+  const handleOAuth = useCallback(
+    async (provider: "google" | "github" | "discord") => {
+      const supabase = createClient();
+      await supabase.auth.signInWithOAuth({
+        provider,
+        options: { redirectTo: `${window.location.origin}/auth/callback` },
+      });
+    },
+    []
+  );
+
+  // ================================================================
+  // Demo mode
+  // ================================================================
+  const handleDemoMode = () => {
+    router.push("/dashboard?demo=true");
+  };
+
+  // ================================================================
+  // Retry from error
+  // ================================================================
+  const handleRetry = () => {
+    setError(null);
+    setFlowState("idle");
+  };
+
+  // ================================================================
+  // Render helpers
+  // ================================================================
+
+  const renderOtpInput = () => (
+    <div className="flex gap-2 justify-center" onPaste={handleOtpPaste}>
+      {otpDigits.map((digit, index) => (
+        <input
+          key={index}
+          ref={(el) => { otpRefs.current[index] = el; }}
+          type="text"
+          inputMode="numeric"
+          maxLength={1}
+          value={digit}
+          onChange={(e) => handleOtpChange(index, e.target.value)}
+          onKeyDown={(e) => handleOtpKeyDown(index, e)}
+          onFocus={(e) => e.target.select()}
+          className="w-10 h-12 text-center text-lg font-bold bg-background border border-border rounded-lg guild-input text-foreground focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all outline-none"
+          autoComplete="one-time-code"
+        />
+      ))}
+    </div>
+  );
+
+  const renderOAuthButtons = () => (
+    <div className="mt-4 space-y-2">
+      <div className="relative">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-border" />
+        </div>
+        <div className="relative flex justify-center text-[10px]">
+          <span className="bg-card px-2 text-muted-foreground">or continue with</span>
         </div>
       </div>
-    );
-  }
+
+      <div className="grid grid-cols-3 gap-2">
+        <button
+          onClick={() => handleOAuth("google")}
+          className="flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs rounded-lg border border-border text-foreground hover:bg-muted transition-colors"
+        >
+          <span aria-hidden="true" className="text-sm">🔵</span>
+          <span className="sr-only">Sign in with Google</span>
+          <span className="hidden sm:inline">Google</span>
+        </button>
+        <button
+          onClick={() => handleOAuth("github")}
+          className="flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs rounded-lg border border-border text-foreground hover:bg-muted transition-colors"
+        >
+          <span aria-hidden="true" className="text-sm">👤</span>
+          <span className="sr-only">Sign in with GitHub</span>
+          <span className="hidden sm:inline">GitHub</span>
+        </button>
+        <button
+          onClick={() => handleOAuth("discord")}
+          className="flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs rounded-lg border border-border text-foreground hover:bg-muted transition-colors"
+        >
+          <span aria-hidden="true" className="text-sm">🎮</span>
+          <span className="sr-only">Sign in with Discord</span>
+          <span className="hidden sm:inline">Discord</span>
+        </button>
+      </div>
+    </div>
+  );
+
+  // ================================================================
+  // Main render
+  // ================================================================
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background relative overflow-hidden">
+    <div id="main-content" className="min-h-screen flex items-center justify-center bg-background relative overflow-hidden">
       {/* Background effects */}
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-legendary/5 pointer-events-none" />
       <div className="absolute top-1/3 left-1/4 w-[400px] h-[400px] bg-primary/5 rounded-full blur-[100px] pointer-events-none" />
@@ -199,151 +353,68 @@ export default function LoginPage() {
             <span className="text-2xl font-bold text-primary text-glow-green tracking-wider">GUILD_OS</span>
           </Link>
           <p className="text-xs text-muted-foreground mt-2">
-            {isRegister ? "Create your merchant account" : "Sign in to your terminal"}
+            Sign in to your terminal
           </p>
         </div>
 
         {/* Form Card */}
-        <div className="guild-card bg-card rounded-xl p-6 border-primary/20 shadow-[0_0_30px_oklch(0.78_0.2_145/5%)]">
-          {signupSuccess ? (
-            <div className="text-center py-4">
-              <span className="text-5xl block mb-4">📧</span>
-              <h2 className="text-sm font-bold text-primary mb-2">Check Your Email</h2>
-              <p className="text-xs text-muted-foreground mb-4">
-                We&apos;ve sent a verification link to <span className="text-primary">{email}</span>. Please check your inbox and verify your account before signing in.
-              </p>
-              <button onClick={() => { setSignupSuccess(false); setIsRegister(false); setEmail(""); setPassword(""); setError(null); }}
-                className="text-xs text-primary hover:underline">
-                Back to Sign In
-              </button>
-            </div>
-          ) : (
+        <div
+          className="guild-card bg-card rounded-xl p-6 border-primary/20 shadow-[0_0_30px_oklch(0.78_0.2_145/5%)]"
+          aria-busy={flowState === "sending" || flowState === "verifying"}
+        >
+          {/* ===== FLOW STATE: IDLE ===== */}
+          {flowState === "idle" && (
             <>
-              <form onSubmit={handleSubmit} className="space-y-4">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSendMagicLink();
+                }}
+                className="space-y-4"
+              >
                 <div>
-                  <label className="text-[11px] text-muted-foreground uppercase tracking-wider">Email</label>
+                  <label
+                    htmlFor="input-login-email"
+                    className="text-[11px] text-muted-foreground uppercase tracking-wider"
+                  >
+                    Email
+                  </label>
                   <input
-                    type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                    id="input-login-email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     placeholder="merchant@guildos.com"
                     className="mt-1 w-full px-3 py-2.5 text-sm bg-background border border-border rounded guild-input text-foreground placeholder:text-muted-foreground"
-                    id="input-login-email"
+                    autoFocus
+                    autoComplete="email"
                   />
                 </div>
-
-                <div>
-                  <div className="flex items-center justify-between">
-                    <label className="text-[11px] text-muted-foreground uppercase tracking-wider">Password</label>
-                    {!isRegister && (
-                      <button type="button" onClick={() => setShowForgotPassword(true)}
-                        className="text-[10px] text-primary hover:underline">
-                        Forgot?
-                      </button>
-                    )}
-                  </div>
-                  <input
-                    type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="mt-1 w-full px-3 py-2.5 text-sm bg-background border border-border rounded guild-input text-foreground placeholder:text-muted-foreground"
-                    id="input-login-password"
-                  />
-                  {isRegister && <PasswordStrength password={password} />}
-                </div>
-
-                {/* Faction Selection (Registration only) */}
-                {isRegister && (
-                  <div className="animate-in slide-in-from-top-2 duration-300">
-                    <label className="text-[11px] text-muted-foreground uppercase tracking-wider block mb-2">
-                      Choose Your Faction
-                    </label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {FACTIONS.map((faction) => (
-                        <button
-                          key={faction.id}
-                          type="button"
-                          onClick={() => handleFactionSelect(faction.id)}
-                          className={`p-3 rounded-lg border text-center transition-all ${
-                            selectedFaction === faction.id
-                              ? `${faction.border} ${faction.bg} shadow-lg`
-                              : "border-border bg-background hover:border-muted-foreground/30"
-                          } ${animatingFaction === faction.id ? "animate-level-up" : ""}`}
-                        >
-                          <span className="text-xl block">{faction.icon}</span>
-                          <span className="text-[9px] text-foreground/70 block mt-1 truncate">{faction.name}</span>
-                          <span className="text-[9px] text-muted-foreground block mt-0.5">{faction.members.toLocaleString()} members</span>
-                        </button>
-                      ))}
-                    </div>
-                    {selectedFaction && (
-                      <div className="mt-2 p-2 rounded bg-background/50 text-center animate-in slide-in-from-top duration-200">
-                        <p className="text-[11px] text-foreground/80 italic">
-                          {FACTIONS.find((f) => f.id === selectedFaction)?.desc}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                )}
 
                 {error && (
-                  <div className="p-2 rounded bg-destructive/10 border border-destructive/30">
+                  <div role="alert" aria-live="assertive" className="p-2 rounded bg-destructive/10 border border-destructive/30">
                     <p className="text-xs text-destructive">{error}</p>
                   </div>
                 )}
 
                 <button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={!email.trim()}
                   className="w-full py-3 rounded-lg bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-all hover:shadow-[0_0_20px_oklch(0.78_0.2_145/15%)] disabled:opacity-50"
-                  id="btn-login-submit"
+                  id="btn-send-magic-link"
                 >
-                  {isSubmitting ? "AUTHENTICATING..." : isRegister ? "⚔️ DEPLOY GUILD" : "⚔️ ENTER TERMINAL"}
+                  <span className="inline-flex items-center gap-2">
+                    🔗 Send Magic Link
+                  </span>
                 </button>
               </form>
 
-              {/* OAuth Buttons */}
-              <div className="mt-4 space-y-2">
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-border" />
-                  </div>
-                  <div className="relative flex justify-center text-[10px]">
-                    <span className="bg-card px-2 text-muted-foreground">or continue with</span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={async () => {
-                      const supabase = createClient();
-                      await supabase.auth.signInWithOAuth({
-                        provider: 'google',
-                        options: { redirectTo: `${window.location.origin}/auth/callback` },
-                      });
-                    }}
-                    className="flex items-center justify-center gap-2 px-4 py-2.5 text-xs rounded-lg border border-border text-foreground hover:bg-muted transition-colors"
-                  >
-                    <span className="text-sm">🔵</span>
-                    Google
-                  </button>
-                  <button
-                    onClick={async () => {
-                      const supabase = createClient();
-                      await supabase.auth.signInWithOAuth({
-                        provider: 'github',
-                        options: { redirectTo: `${window.location.origin}/auth/callback` },
-                      });
-                    }}
-                    className="flex items-center justify-center gap-2 px-4 py-2.5 text-xs rounded-lg border border-border text-foreground hover:bg-muted transition-colors"
-                  >
-                    <span className="text-sm">👤</span>
-                    GitHub
-                  </button>
-                </div>
-              </div>
+              {renderOAuthButtons()}
 
               {/* Demo Mode Quick Access */}
               <div className="mt-4 pt-4 border-t border-border">
                 <button
-                  onClick={() => router.push("/dashboard?demo=true")}
+                  onClick={handleDemoMode}
                   className="w-full py-2.5 rounded-lg bg-gold/10 border border-gold/20 text-gold text-sm font-medium hover:bg-gold/20 transition-colors"
                   id="btn-demo-mode"
                 >
@@ -351,27 +422,153 @@ export default function LoginPage() {
                 </button>
               </div>
 
-              {/* Terms and Privacy */}
+              {/* Terms */}
               <div className="mt-3 text-center">
                 <p className="text-[10px] text-muted-foreground">
                   By continuing, you agree to our{" "}
-                  <Link href="/" className="text-primary hover:underline">Terms of Service</Link>
+                  <Link href="/legal/terms" className="text-primary hover:underline">Terms of Service</Link>
                   {" "}and{" "}
-                  <Link href="/" className="text-primary hover:underline">Privacy Policy</Link>
+                  <Link href="/legal/privacy" className="text-primary hover:underline">Privacy Policy</Link>
+                </p>
+              </div>
+            </>
+          )}
+
+          {/* ===== FLOW STATE: SENDING ===== */}
+          {flowState === "sending" && (
+            <div className="text-center py-8">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full border-2 border-primary border-t-transparent animate-spin mb-4" />
+              <p className="text-sm text-foreground font-medium">Sending magic link...</p>
+              <p className="text-xs text-muted-foreground mt-1">Please wait a moment.</p>
+            </div>
+          )}
+
+          {/* ===== FLOW STATE: SENT ===== */}
+          {flowState === "sent" && (
+            <div className="text-center py-2">
+              <span className="text-5xl block mb-4">📧</span>
+              <h2 className="text-sm font-bold text-primary mb-2">Check Your Email</h2>
+              <p className="text-xs text-muted-foreground mb-2">
+                We sent a magic link to{" "}
+                <span className="text-primary font-medium">{email}</span>.
+                Click the link in the email to sign in instantly.
+              </p>
+              <p className="text-xs text-muted-foreground mb-4">
+                Didn&apos;t receive it? Check your spam folder or try a different method.
+              </p>
+
+              {/* Resend cooldown */}
+              {cooldown > 0 ? (
+                <p className="text-xs text-muted-foreground mb-4">
+                  Resend available in{" "}
+                  <span className="text-primary font-mono">{cooldown}s</span>
+                </p>
+              ) : (
+                <button
+                  onClick={handleSendMagicLink}
+                  className="text-xs text-primary hover:underline mb-4"
+                >
+                  Resend magic link
+                </button>
+              )}
+
+              <div className="border-t border-border pt-4 mt-2">
+                <button
+                  onClick={handleTryCode}
+                  className="text-xs text-primary hover:underline"
+                  disabled={cooldown > 0}
+                >
+                  {cooldown > 0
+                    ? `Enter code instead (wait ${cooldown}s)`
+                    : "Enter code instead"}
+                </button>
+              </div>
+
+              {error && (
+                <div role="alert" aria-live="assertive" className="p-2 rounded bg-destructive/10 border border-destructive/30 mt-3">
+                  <p className="text-xs text-destructive">{error}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ===== FLOW STATE: CODE_INPUT ===== */}
+          {flowState === "code_input" && (
+            <>
+              <div className="text-center">
+                <h2 className="text-sm font-bold text-primary mb-1">Enter Verification Code</h2>
+                <p className="text-xs text-muted-foreground mb-4">
+                  Enter the 6-digit code sent to{" "}
+                  <span className="text-primary font-medium">{email}</span>
                 </p>
               </div>
 
-              {/* Toggle Register/Login */}
-              <p className="text-xs text-muted-foreground text-center mt-4">
-                {isRegister ? "Already have a terminal?" : "Need a terminal?"}{" "}
+              {renderOtpInput()}
+
+              <div className="mt-4 space-y-3">
+                {error && (
+                  <div role="alert" aria-live="assertive" className="p-2 rounded bg-destructive/10 border border-destructive/30">
+                    <p className="text-xs text-destructive text-center">{error}</p>
+                  </div>
+                )}
+
                 <button
-                  onClick={() => { setIsRegister(!isRegister); setError(null); setSignupSuccess(false); }}
-                  className="text-primary hover:underline"
+                  onClick={handleVerifyOtp}
+                  disabled={otpDigits.join("").length !== 6}
+                  className="w-full py-3 rounded-lg bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-all hover:shadow-[0_0_20px_oklch(0.78_0.2_145/15%)] disabled:opacity-50"
+                  id="btn-verify-otp"
                 >
-                  {isRegister ? "Sign In" : "Register"}
+                  Verify Code
                 </button>
-              </p>
+
+                <div className="flex items-center justify-between">
+                  {cooldown > 0 ? (
+                    <span className="text-xs text-muted-foreground">
+                      Resend code in {cooldown}s
+                    </span>
+                  ) : (
+                    <button
+                      onClick={handleTryCode}
+                      className="text-xs text-primary hover:underline"
+                    >
+                      Resend code
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setFlowState("sent")}
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Back
+                  </button>
+                </div>
+              </div>
             </>
+          )}
+
+          {/* ===== FLOW STATE: VERIFYING ===== */}
+          {flowState === "verifying" && (
+            <div className="text-center py-8">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full border-2 border-primary border-t-transparent animate-spin mb-4" />
+              <p className="text-sm text-foreground font-medium">Verifying code...</p>
+              <p className="text-xs text-muted-foreground mt-1">Signing you in.</p>
+            </div>
+          )}
+
+          {/* ===== FLOW STATE: ERROR ===== */}
+          {flowState === "error" && (
+            <div className="text-center py-4">
+              <span className="text-5xl block mb-4">⚠️</span>
+              <h2 className="text-sm font-bold text-destructive mb-2">Authentication Error</h2>
+              <p className="text-xs text-muted-foreground mb-4">
+                {error || "Something went wrong. Please try again."}
+              </p>
+              <button
+                onClick={handleRetry}
+                className="w-full py-3 rounded-lg bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-all"
+              >
+                Try Again
+              </button>
+            </div>
           )}
         </div>
       </div>

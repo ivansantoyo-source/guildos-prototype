@@ -18,6 +18,7 @@ export function CommandPalette() {
   const [query, setQuery] = useState("");
   const [selectedIdx, setSelectedIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const inventory = useGuildStore((s) => s.inventory);
   const bounties = useGuildStore((s) => s.bounties);
@@ -89,6 +90,13 @@ export function CommandPalette() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [open]);
 
+  // Clamp selection index when filtered list shrinks below current selection
+  useEffect(() => {
+    if (filtered.length > 0 && selectedIdx >= filtered.length) {
+      setSelectedIdx(filtered.length - 1);
+    }
+  }, [filtered.length, selectedIdx]);
+
   // Focus input on open
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 50);
@@ -114,6 +122,11 @@ export function CommandPalette() {
     [filtered, selectedIdx]
   );
 
+  const activeDescendantId =
+    filtered.length > 0 && selectedIdx >= 0 && selectedIdx < filtered.length
+      ? `cmd-${filtered[selectedIdx].id}`
+      : undefined;
+
   if (!open) return null;
 
   // Group commands
@@ -124,7 +137,31 @@ export function CommandPalette() {
   });
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-start justify-center pt-[15vh]" role="dialog" aria-modal="true">
+    <div
+      ref={dialogRef}
+      className="fixed inset-0 z-[200] flex items-start justify-center pt-[15vh]"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Command palette"
+      onKeyDown={(e) => {
+        if (e.key === "Tab") {
+          e.preventDefault();
+          const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
+            'input, button, [tabindex]:not([tabindex="-1"])'
+          );
+          if (!focusable || focusable.length === 0) return;
+          const focusableArr = Array.from(focusable);
+          const currentIdx = focusableArr.indexOf(document.activeElement as HTMLElement);
+          let nextIdx: number;
+          if (e.shiftKey) {
+            nextIdx = currentIdx <= 0 ? focusableArr.length - 1 : currentIdx - 1;
+          } else {
+            nextIdx = currentIdx >= focusableArr.length - 1 ? 0 : currentIdx + 1;
+          }
+          focusableArr[nextIdx]?.focus();
+        }
+      }}
+    >
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setOpen(false)} />
 
@@ -136,6 +173,11 @@ export function CommandPalette() {
           <input
             ref={inputRef}
             type="text"
+            role="combobox"
+            aria-expanded="true"
+            aria-haspopup="listbox"
+            aria-controls="command-palette-listbox"
+            aria-activedescendant={activeDescendantId}
             value={query}
             onChange={(e) => { setQuery(e.target.value); setSelectedIdx(0); }}
             onKeyDown={handleKeyDown}
@@ -146,7 +188,12 @@ export function CommandPalette() {
         </div>
 
         {/* Results */}
-        <div className="max-h-80 overflow-y-auto p-2">
+        <div
+          id="command-palette-listbox"
+          role="listbox"
+          aria-label="Command results"
+          className="max-h-80 overflow-y-auto p-2"
+        >
           {filtered.length === 0 && (
             <div className="text-center py-8 text-muted-foreground text-sm">
               <p className="text-lg mb-1">🔮</p>
@@ -163,6 +210,9 @@ export function CommandPalette() {
                 return (
                   <button
                     key={item.id}
+                    id={`cmd-${item.id}`}
+                    role="option"
+                    aria-selected={isSelected}
                     onClick={() => { item.action(); setOpen(false); }}
                     onMouseEnter={() => setSelectedIdx(globalIdx)}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-left transition-all text-sm ${

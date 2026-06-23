@@ -1,5 +1,8 @@
-import { NextRequest } from 'next/server';
-import { isDemoMode } from '@/lib/toggles';
+import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { createClient } from '@/lib/supabase/server';
+import { withHardening, ValidatedNextRequest } from '@/lib/auth/server-auth';
+import { BlacklistEntrySchema } from '@/lib/validation/schemas';
 
 // In-memory demo blacklist store
 const demoBlacklist: Array<{
@@ -15,46 +18,41 @@ const demoBlacklist: Array<{
   created_at: string;
 }> = [];
 
-/**
- * POST /api/security/blacklist
- * Register a fraud/theft entry. The system hashes the suspect's ID metadata
- * and broadcasts to all tenants within a 100-mile radius.
- *
- * Protected by BLACKLIST_VERIFICATION_KEY header.
- */
-export async function POST(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  const verificationKey = process.env.BLACKLIST_VERIFICATION_KEY;
+// ============================================================================
+// POST /api/security/blacklist
+// Register a fraud/theft entry. The system hashes the suspect's ID metadata
+// and broadcasts to all tenants within a 100-mile radius.
+//
+// Restricted to admin/owner. Additional verification via
+// BLACKLIST_VERIFICATION_KEY header for cross-tenant sharing.
+// ============================================================================
+export const POST = withHardening(
+  async (req, session) => {
+    const data = (req as ValidatedNextRequest<z.infer<typeof BlacklistEntrySchema>>).validatedData;
 
-  if (verificationKey && authHeader !== `Bearer ${verificationKey}`) {
-    return Response.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  try {
-    const payload = await request.json();
-    const { origin_tenant, suspect_hash, incident_type, description, geo_lat, geo_lng } = payload;
-
-    if (!suspect_hash || !incident_type) {
-      return Response.json(
-        { error: 'suspect_hash and incident_type are required' },
-        { status: 400 }
-      );
+    // Additional verification key check (legacy cross-tenant auth layer)
+    const authHeader = req.headers.get('authorization');
+    const verificationKey = process.env.BLACKLIST_VERIFICATION_KEY;
+    if (verificationKey && authHeader !== `Bearer ${verificationKey}`) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const { suspect_hash, incident_type, description, geo_lat, geo_lng } = data;
 
     const entry = {
       id: `bl-${Date.now()}`,
-      reported_by_org: origin_tenant || 'unknown',
+      reported_by_org: session.organization_id || 'unknown',
       hashed_id: suspect_hash,
       geo_lat,
       geo_lng,
       reason: incident_type,
-      description: description || null,
+      description: description || undefined,
       severity: (incident_type === 'FRAUD_IDENTITY' || incident_type === 'THEFT_BULK') ? 'CRITICAL' as const : 'WARNING' as const,
       is_active: true,
       created_at: new Date().toISOString(),
     };
 
-    if (isDemoMode()) {
+    if (session.isDemo) {
       demoBlacklist.push(entry);
       console.log(
         `%c[SECURITY DEMO] %cBlacklist entry created: ${incident_type} %c— broadcasting to tenants within 100-mile radius`,
@@ -62,35 +60,86 @@ export async function POST(request: NextRequest) {
         'color: white;',
         'color: red;'
       );
+
+      return NextResponse.json({
+        success: true,
+        source: 'mock-blacklist',
+        message: `Threat ${incident_type} registered. Global network notified within 100-mile radius.`,
+        entry,
+        affected_tenants: 3,
+      });
     }
 
-    return Response.json({
+    // Production path: insert into Supabase and return the real row
+    const supabase = await createClient();
+    const { data: insertedRow, error: insertError } = await supabase
+      .from('security_blacklist')
+      .insert({
+        reported_by_org: session.organization_id || 'unknown',
+        hashed_id: suspect_hash,
+        geo_lat,
+        geo_lng,
+        reason: incident_type,
+        description: description || null,
+        severity: (incident_type === 'FRAUD_IDENTITY' || incident_type === 'THEFT_BULK') ? 'CRITICAL' : 'WARNING',
+        is_active: true,
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error('[security/blacklist] Supabase insert error:', insertError.message);
+      return NextResponse.json(
+        { error: 'Failed to register blacklist entry' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
       success: true,
-      source: isDemoMode() ? 'mock-blacklist' : 'supabase',
+      source: 'supabase',
       message: `Threat ${incident_type} registered. Global network notified within 100-mile radius.`,
-      entry,
-      affected_tenants: isDemoMode() ? 3 : 0,
+      entry: insertedRow,
+      affected_tenants: 0,
     });
-  } catch (error) {
-    console.error('[Blacklist] Registration error:', error);
-    return Response.json(
-      { success: false, error: 'Unable to process request' },
-      { status: 500 }
-    );
+  },
+  {
+    roles: ['admin', 'owner'],
+    schema: BlacklistEntrySchema,
+    rateLimit: { key: 'security-blacklist-create', maxRequests: 30, windowMs: 60_000 },
   }
-}
+);
 
-/**
- * GET /api/security/blacklist
- * Query active blacklist entries (cross-tenant read — all authenticated can view).
- */
-export async function GET() {
-  if (isDemoMode()) {
-    return Response.json({
-      data: demoBlacklist.filter((e) => e.is_active),
-      count: demoBlacklist.filter((e) => e.is_active).length,
-    });
+// ============================================================================
+// GET /api/security/blacklist
+// Query active blacklist entries (cross-tenant read — all authenticated can view).
+// ============================================================================
+export const GET = withHardening(
+  async (req, session) => {
+    if (session.isDemo) {
+      return NextResponse.json({
+        data: demoBlacklist.filter((e) => e.is_active),
+        count: demoBlacklist.filter((e) => e.is_active).length,
+      });
+    }
+
+    const supabase = await createClient();
+    const { data, error, count } = await supabase
+      .from('security_blacklist')
+      .select('*', { count: 'exact' })
+      .eq('is_active', true);
+
+    if (error) {
+      console.error('[security/blacklist] Supabase query error:', error.message);
+      return NextResponse.json(
+        { error: 'Failed to fetch blacklist' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ data: data ?? [], count: count ?? 0 });
+  },
+  {
+    rateLimit: { key: 'security-blacklist-read', maxRequests: 60, windowMs: 60_000 },
   }
-
-  return Response.json({ data: [], count: 0 });
-}
+);

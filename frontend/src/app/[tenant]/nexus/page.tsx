@@ -12,7 +12,7 @@ export default function NexusPage({ params }: { params: { tenant: string } }) {
   ];
 
   return (
-    <div className="flex flex-col items-center justify-start min-h-screen bg-background text-foreground dark p-8">
+    <div id="main-content" className="flex flex-col items-center justify-start min-h-screen bg-background text-foreground dark p-8">
       <h1 className="text-5xl font-bold tracking-tight text-primary mb-2 drop-shadow-[0_0_15px_rgba(57,255,20,0.5)]">
         The Nexus
       </h1>

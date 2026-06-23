@@ -1,11 +1,24 @@
+import { NextRequest, NextResponse } from 'next/server';
 import { isDemoMode } from '@/lib/toggles';
 import { phantomFactionStandings, phantomProfiles } from '@/mocks/phantomData';
 
 /**
  * Vercel Cron — Monthly Faction War Resolution (last day of month, 23:59 UTC)
  * Tallies faction points, declares winner, activates 10% discount for winner's tagged inventory.
+ *
+ * Protected by CRON_SECRET authorization header (set automatically by Vercel Cron).
  */
-export async function GET() {
+export async function GET(request?: NextRequest) {
+  // Auth: CRON_SECRET header check — unconditional, fails closed
+  const authHeader = request?.headers?.get('authorization');
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret) {
+    return NextResponse.json({ error: 'Cron not configured' }, { status: 500 });
+  }
+  if (authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   if (isDemoMode()) {
     const now = new Date();
     const standings = phantomFactionStandings.map((s) => ({

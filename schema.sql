@@ -16,7 +16,8 @@ CREATE SCHEMA IF NOT EXISTS guildos_core;
 SET search_path TO guildos_core;
 
 -- Enable extensions (in public schema, available to guildos_core)
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public;
+-- NOTE: uuid-ossp intentionally removed — gen_random_uuid() from pgcrypto
+-- is the PG13+ built-in replacement for uuid_generate_v4().
 CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA public;
 
 -- ============================================================================
@@ -35,7 +36,7 @@ $$ LANGUAGE SQL STABLE;
 
 -- ORGANIZATIONS (Tenant / Storefronts)
 CREATE TABLE guildos_core.organizations (
-    id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,                            -- "Time Warp Gaming"
     subdomain TEXT UNIQUE NOT NULL,                -- "timewarp"
     custom_domain TEXT UNIQUE,                     -- "shop.timewarpgaming.com"
@@ -73,7 +74,7 @@ CREATE TABLE guildos_core.profiles (
 
 -- INVENTORY (Physical Stock — The Loot Matrix)
 CREATE TABLE guildos_core.inventory (
-    id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID REFERENCES guildos_core.organizations(id) ON DELETE RESTRICT,
     item_name TEXT NOT NULL,
     platform TEXT,                                  -- 'SNES', 'NES', 'PS1', 'GENESIS', etc.
@@ -97,7 +98,7 @@ CREATE TABLE guildos_core.inventory (
 
 -- BOUNTIES (Community Supply Chain — The Quest Board)
 CREATE TABLE guildos_core.bounties (
-    id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID REFERENCES guildos_core.organizations(id) ON DELETE RESTRICT,
     target_item_name TEXT NOT NULL,
     platform TEXT,
@@ -115,7 +116,7 @@ CREATE TABLE guildos_core.bounties (
 
 -- NEXUS LFG (Looking For Group — Space Monetization)
 CREATE TABLE guildos_core.nexus_lfgs (
-    id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID REFERENCES guildos_core.organizations(id) ON DELETE RESTRICT,
     creator_id UUID REFERENCES guildos_core.profiles(id),
     game_title TEXT NOT NULL,
@@ -132,7 +133,7 @@ CREATE TABLE guildos_core.nexus_lfgs (
 
 -- NEXUS LFG PARTICIPANTS (Who joined which lobby)
 CREATE TABLE guildos_core.nexus_lfg_participants (
-    id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     lfg_id UUID REFERENCES guildos_core.nexus_lfgs(id) ON DELETE CASCADE,
     profile_id UUID REFERENCES guildos_core.profiles(id),
     joined_at TIMESTAMPTZ DEFAULT NOW(),
@@ -141,7 +142,7 @@ CREATE TABLE guildos_core.nexus_lfg_participants (
 
 -- NEXUS SCOREBOARDS (Ghost Data Leaderboards)
 CREATE TABLE guildos_core.nexus_scoreboards (
-    id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID REFERENCES guildos_core.organizations(id) ON DELETE RESTRICT,
     cabinet_name TEXT NOT NULL,                    -- 'Cabinet A', 'Cabinet B'
     game_title TEXT NOT NULL,                      -- 'PAC-MAN', 'GALAGA'
@@ -156,7 +157,7 @@ CREATE TABLE guildos_core.nexus_scoreboards (
 
 -- NEXUS SAVE ROOMS (Space Rental Subscriptions)
 CREATE TABLE guildos_core.nexus_save_rooms (
-    id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID REFERENCES guildos_core.organizations(id) ON DELETE RESTRICT,
     room_name TEXT NOT NULL,                       -- 'Save Room Alpha'
     description TEXT,
@@ -172,7 +173,7 @@ CREATE TABLE guildos_core.nexus_save_rooms (
 
 -- FACTION STANDINGS (Monthly Faction War Tracking)
 CREATE TABLE guildos_core.faction_standings (
-    id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID REFERENCES guildos_core.organizations(id) ON DELETE RESTRICT,
     month INTEGER NOT NULL CHECK (month BETWEEN 1 AND 12),
     year INTEGER NOT NULL,
@@ -186,7 +187,7 @@ CREATE TABLE guildos_core.faction_standings (
 
 -- PRICE HISTORY (Market Value Tracking for Algorithmic Pricing)
 CREATE TABLE guildos_core.price_history (
-    id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     inventory_id UUID REFERENCES guildos_core.inventory(id) ON DELETE CASCADE,
     organization_id UUID REFERENCES guildos_core.organizations(id) ON DELETE RESTRICT,
     market_value NUMERIC(19, 4) NOT NULL,
@@ -196,7 +197,7 @@ CREATE TABLE guildos_core.price_history (
 
 -- BLACKLIST ENTRIES (Zero-Knowledge Fraud Ledger)
 CREATE TABLE guildos_core.blacklist_entries (
-    id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     reported_by_org UUID REFERENCES guildos_core.organizations(id) ON DELETE RESTRICT,
     hashed_id TEXT NOT NULL,                       -- SHA-256 of ID metadata
     geo_lat NUMERIC(10, 7),
@@ -210,7 +211,7 @@ CREATE TABLE guildos_core.blacklist_entries (
 
 -- NOTIFICATIONS (In-App Notification Queue)
 CREATE TABLE guildos_core.notifications (
-    id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID REFERENCES guildos_core.organizations(id) ON DELETE RESTRICT,
     user_id UUID REFERENCES guildos_core.profiles(id),
     type TEXT NOT NULL CHECK (type IN (
@@ -227,7 +228,7 @@ CREATE TABLE guildos_core.notifications (
 
 -- DISCOUNT CODES (Generated by Konami Code + Promotions)
 CREATE TABLE guildos_core.discount_codes (
-    id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID REFERENCES guildos_core.organizations(id) ON DELETE RESTRICT,
     code TEXT NOT NULL,
     discount_percent NUMERIC(5, 2) DEFAULT 10.00,

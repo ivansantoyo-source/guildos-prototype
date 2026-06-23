@@ -259,6 +259,9 @@ export default function SettingsPage() {
                     <p className="text-[11px] text-muted-foreground mt-0.5">{desc}</p>
                   </div>
                   <button
+                    role="switch"
+                    aria-checked={enabled}
+                    aria-label={`Enable ${label}`}
                     onClick={() => handleChange(`features.${key}`, (!enabled).toString())}
                     className={`relative w-10 h-5 rounded-full transition-colors ${enabled ? "bg-primary" : "bg-muted"}`}
                   >

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, Suspense } from "react";
+import React, { useEffect, useCallback, Suspense } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -17,19 +17,37 @@ import {
   phantomDashboardStats,
   phantomActivity,
   phantomNotifications,
+  phantomVitalityQuests,
+  phantomStations,
+  phantomStationBookings,
+  phantomWallets,
+  phantomWalletTransactions,
+  phantomPotionsMenu,
+  phantomPotionOrders,
+  phantomOrders,
+  phantomPOSSession,
+  phantomPOSTransactions,
+  phantomAgentSession,
+  phantomAgentMessages,
+  phantomStorefrontConfig,
 } from "@/mocks/phantomData";
 import { playClick } from "@/lib/audio/sounds";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { DemoBanner } from "@/components/widgets/demo-banner";
+import { useSessionTimeout } from "@/hooks/useSessionTimeout";
 import { RealtimeProvider } from "@/components/providers/realtime-provider";
+import StaminaBar from "@/components/vitality/stamina-bar";
+import { calculateStamina } from "@/lib/vitality/stamina";
 
 // Nav items — hrefs preserve demo mode param so navigation works without redirects
 const BASE_NAV = [
   { href: "/dashboard", label: "Dashboard", icon: "⚔️", id: "dashboard" },
   { href: "/inventory", label: "Inventory Matrix", icon: "📦", id: "inventory" },
+  { href: "/pos", label: "Point of Sale", icon: "💳", id: "pos" },
   { href: "/bounty-board", label: "Quest Board", icon: "📜", id: "bounty-board" },
   { href: "/nexus", label: "The Nexus", icon: "🏟️", id: "nexus" },
   { href: "/shopkeeper", label: "Shopkeeper AI", icon: "🤖", id: "shopkeeper" },
+  { href: "/agent", label: "Agent AI", icon: "🧠", id: "agent" },
   { href: "/analytics", label: "Analytics", icon: "📊", id: "analytics" },
   { href: "/profile", label: "Profile", icon: "👤", id: "profile" },
   { href: "/settings", label: "Settings", icon: "⚙️", id: "settings" },
@@ -62,6 +80,24 @@ function getBreadcrumbs(pathname: string): Array<{ label: string; href: string }
   return crumbs;
 }
 
+function StaminaBarWrapper() {
+  const stamina = useGuildStore((s) => s.stamina);
+  const maxStamina = useGuildStore((s) => s.maxStamina);
+  const debuffType = useGuildStore((s) => s.debuffType);
+  const debuffUntil = useGuildStore((s) => s.debuffUntil);
+
+  return (
+    <div className="mx-3 mb-2 px-3 py-2 rounded-md bg-background/30 border border-border/30">
+      <StaminaBar
+        stamina={stamina}
+        maxStamina={maxStamina}
+        debuffType={debuffType}
+        debuffUntil={debuffUntil}
+      />
+    </div>
+  );
+}
+
 export default function MerchantLayout({
   children,
 }: {
@@ -70,7 +106,9 @@ export default function MerchantLayout({
   const pathname = usePathname();
   const setDemoMode = useGuildStore((s) => s.setDemoMode);
   const sidebarCollapsed = useGuildStore((s) => s.sidebarCollapsed);
+  const sidebarHidden = useGuildStore((s) => s.sidebarHidden);
   const toggleSidebar = useGuildStore((s) => s.toggleSidebar);
+  const setSidebarHidden = useGuildStore((s) => s.setSidebarHidden);
   const setActiveModule = useGuildStore((s) => s.setActiveModule);
   const demoMode = useGuildStore((s) => s.demoMode);
   const notifications = useGuildStore((s) => s.notifications);
@@ -87,6 +125,18 @@ export default function MerchantLayout({
   const setDashboardStats = useGuildStore((s) => s.setDashboardStats);
   const setActivityFeed = useGuildStore((s) => s.setActivityFeed);
   const setNotifications = useGuildStore((s) => s.setNotifications);
+  const setStaminaVal = useGuildStore((s) => s.setStamina);
+  const setVitalityQuests = useGuildStore((s) => s.setVitalityQuests);
+  const setStations = useGuildStore((s) => s.setStations);
+  const setStationBookings = useGuildStore((s) => s.setStationBookings);
+  const setWallet = useGuildStore((s) => s.setWallet);
+  const setWalletTransactions = useGuildStore((s) => s.setWalletTransactions);
+  const setPotionsMenu = useGuildStore((s) => s.setPotionsMenu);
+  const setPotionOrders = useGuildStore((s) => s.setPotionOrders);
+  const setCustomerOrders = useGuildStore((s) => s.setCustomerOrders);
+  const setPOSSession = useGuildStore((s) => s.setPOSSession);
+  const setAgentSession = useGuildStore((s) => s.setAgentSession);
+  const setStorefrontConfig = useGuildStore((s) => s.setStorefrontConfig);
 
   useEffect(() => {
     if (demoMode) {
@@ -99,8 +149,43 @@ export default function MerchantLayout({
       setDashboardStats(phantomDashboardStats);
       setActivityFeed(phantomActivity);
       setNotifications(phantomNotifications);
+      setVitalityQuests(phantomVitalityQuests);
+      setStations(phantomStations);
+      setStationBookings(phantomStationBookings);
+      setWallet(phantomWallets[0]);
+      setWalletTransactions(phantomWalletTransactions);
+      setPotionsMenu(phantomPotionsMenu);
+      setPotionOrders(phantomPotionOrders);
+      setCustomerOrders(phantomOrders);
+      setPOSSession(phantomPOSSession);
+      setAgentSession(phantomAgentSession);
+      setStorefrontConfig(phantomStorefrontConfig);
+
+      // Initialize demo stamina
+      setStaminaVal(72);
+      useGuildStore.setState({ maxStamina: 100, consecutiveHours: 1.5, lastActivityAt: new Date().toISOString() });
     }
-  }, [demoMode, setInventory, setBounties, setLfgLobbies, setScoreboards, setFactionStandings, setDashboardStats, setActivityFeed, setNotifications]);
+  }, [demoMode, setInventory, setBounties, setLfgLobbies, setScoreboards, setFactionStandings, setDashboardStats, setActivityFeed, setNotifications, setVitalityQuests, setStations, setStaminaVal, setStationBookings, setWallet, setWalletTransactions, setPotionsMenu, setPotionOrders, setCustomerOrders, setPOSSession, setAgentSession, setStorefrontConfig]);
+
+  // Stamina tick interval — recalculate every 5 minutes
+  useEffect(() => {
+    const tick = () => {
+      const state = useGuildStore.getState();
+      const newStamina = calculateStamina({
+        stamina: state.stamina,
+        maxStamina: state.maxStamina,
+        debuffType: state.debuffType,
+        debuffUntil: state.debuffUntil,
+        consecutiveHours: state.consecutiveHours,
+        lastActivityAt: state.lastActivityAt,
+      });
+      useGuildStore.setState(newStamina);
+    };
+    // Tick immediately on mount
+    tick();
+    const interval = setInterval(tick, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Detect ?demo=true in URL and force demo mode (client-side only, no useSearchParams)
   useEffect(() => {
@@ -117,14 +202,47 @@ export default function MerchantLayout({
     }
   }, [demoMode, setDemoMode]);
 
+  // Responsive: on initial mount, collapse sidebar on screens below 1280px
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (window.innerWidth < 1280 && !sidebarCollapsed && !sidebarHidden) {
+      toggleSidebar();
+    }
+  }, []); // only on mount — don't override user preference mid-session
+
   // Track active module from pathname
   useEffect(() => {
     const active = BASE_NAV.find((item) => pathname.startsWith(item.href));
     if (active) setActiveModule(active.id);
   }, [pathname, setActiveModule]);
 
+  // ── Session timeout monitor ──
+  const { isWarning, isExpiring, refreshSession } = useSessionTimeout();
+
   const breadcrumbs = getBreadcrumbs(pathname);
   const activeNav = BASE_NAV.find((i) => pathname.startsWith(i.href));
+
+  // Cycling toggle: expanded → collapsed → hidden → expanded
+  const handleToggleSidebar = useCallback(() => {
+    if (sidebarHidden) {
+      // hidden → expanded
+      setSidebarHidden(false);
+      if (sidebarCollapsed) toggleSidebar();
+    } else if (sidebarCollapsed) {
+      // collapsed → hidden
+      setSidebarHidden(true);
+    } else {
+      // expanded → collapsed
+      toggleSidebar();
+    }
+  }, [sidebarHidden, sidebarCollapsed, setSidebarHidden, toggleSidebar]);
+
+  // Determine sidebar width class for 3-state
+  const sidebarWidthClass = sidebarHidden
+    ? "w-0 overflow-hidden"
+    : sidebarCollapsed
+      ? "w-16"
+      : "w-64";
 
   return (
     <div className="min-h-screen bg-background text-foreground font-mono flex relative bg-dot-grid-subtle">
@@ -132,9 +250,9 @@ export default function MerchantLayout({
       <div className="fixed inset-0 bg-gradient-move pointer-events-none -z-10" />
 
       {/* === SIDEBAR === */}
-      <aside
+      <div
         className={`${
-          sidebarCollapsed ? "w-16" : "w-64"
+          sidebarWidthClass
         } transition-all duration-300 ease-in-out border-r border-border flex flex-col shrink-0 relative`}
       >
         {/* Glass overlay for sidebar */}
@@ -162,10 +280,11 @@ export default function MerchantLayout({
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 py-4 space-y-1 px-2">
+          <nav aria-label="Primary navigation" className="flex-1 py-4 space-y-1 px-2">
             <AnimatePresence mode="wait">
               {getNavItems().map((item, idx) => {
-                const isActive = pathname.startsWith(item.href);
+                const itemPath = item.href.split('?')[0];
+                const isActive = pathname === itemPath || pathname.startsWith(itemPath + '/');
                 return (
                   <motion.div
                     key={item.id}
@@ -178,6 +297,7 @@ export default function MerchantLayout({
                       key={item.id}
                       href={item.href}
                       id={`nav-${item.id}`}
+                      prefetch={['dashboard', 'inventory', 'bounty-board'].includes(item.id) ? true : undefined}
                       onClick={() => playClick()}
                       className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-all duration-200 group ${
                         isActive
@@ -199,6 +319,11 @@ export default function MerchantLayout({
             </AnimatePresence>
           </nav>
 
+          {/* Stamina Bar */}
+          {!sidebarCollapsed && (
+            <StaminaBarWrapper />
+          )}
+
           {/* Demo Mode Badge */}
           {!sidebarCollapsed && demoMode && (
             <div className="mx-3 mb-3 px-3 py-2 rounded-md bg-gold/10 border border-gold/20 glass-dark">
@@ -207,26 +332,50 @@ export default function MerchantLayout({
             </div>
           )}
 
-          {/* Collapse Toggle */}
-          <motion.button
-            onClick={toggleSidebar}
-            className="h-12 border-t border-border flex items-center justify-center text-muted-foreground hover:text-primary transition-colors"
-            aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-          >
-            {sidebarCollapsed ? "»" : "«"}
-          </motion.button>
+          {/* Collapse Toggle — only shown when sidebar is visible */}
+          {!sidebarHidden && (
+            <motion.button
+              onClick={handleToggleSidebar}
+              className="h-12 border-t border-border flex items-center justify-center text-muted-foreground hover:text-primary transition-colors"
+              aria-label={
+                sidebarCollapsed
+                  ? "Hide sidebar"
+                  : "Collapse sidebar"
+              }
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+            >
+              {sidebarCollapsed ? "»" : "«"}
+            </motion.button>
+          )}
         </div>
-      </aside>
+      </div>
+
+      {/* === FLOATING HAMBURGER (shown when sidebar is fully hidden) === */}
+      {sidebarHidden && (
+        <motion.button
+          onClick={() => {
+            setSidebarHidden(false);
+            if (sidebarCollapsed) toggleSidebar();
+          }}
+          className="fixed top-4 left-4 z-50 w-10 h-10 bg-sidebar/90 backdrop-blur-sm border border-border rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary transition-colors shadow-lg"
+          aria-label="Open sidebar"
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
+        >
+          <span className="text-lg">☰</span>
+        </motion.button>
+      )}
 
       {/* === MAIN CONTENT AREA === */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header className="h-16 border-b border-border glass-panel rounded-none flex items-center justify-between px-6 shrink-0">
+        <header role="banner" className="h-16 border-b border-border glass-panel rounded-none flex items-center justify-between px-6 shrink-0">
           <div className="flex items-center gap-4">
             {/* Breadcrumbs */}
-            <nav className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <nav aria-label="Breadcrumbs" className="flex items-center gap-1.5 text-xs text-muted-foreground">
               {breadcrumbs.map((crumb, idx) => (
                 <React.Fragment key={crumb.href}>
                   {idx > 0 && (
@@ -291,8 +440,25 @@ export default function MerchantLayout({
         {/* Demo Mode Banner — interactive tour for potential customers */}
         <DemoBanner />
 
+        {/* Session Expiry Warning Banner */}
+        {isWarning && (
+          <div
+            onClick={() => refreshSession()}
+            className="cursor-pointer border-b border-amber-500/30 bg-amber-500/10 backdrop-blur-sm"
+          >
+            <div className="px-6 py-2.5 flex items-center justify-center gap-2 text-xs font-semibold text-amber-300">
+              <span className={`inline-block w-2 h-2 rounded-full bg-amber-400 ${isExpiring ? "animate-ping" : "animate-pulse"}`} />
+              <span>
+                {isExpiring
+                  ? "Session expiring in under 1 minute — click to extend"
+                  : "Session expiring soon — click to extend"}
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Page Content with AnimatePresence */}
-        <main className="flex-1 overflow-auto p-6">
+        <main id="main-content" role="main" className="flex-1 overflow-auto p-6">
           <AnimatePresence mode="wait">
             <motion.div
               key={pathname}
@@ -307,25 +473,25 @@ export default function MerchantLayout({
         </main>
       </div>
 
-      {/* === QUICK-ACTION FLOATING BUTTON === */}
-      <motion.button
-        className="fixed bottom-6 right-6 w-12 h-12 bg-primary text-primary-foreground rounded-full flex items-center justify-center shadow-lg z-40 border border-primary/30"
+      {/* === FLOATING CART BUTTON === */}
+      <motion.a
+        href={demoHref('/potions')}
+        className="fixed bottom-6 right-6 w-12 h-12 bg-[var(--neon-primary)] text-black rounded-full flex items-center justify-center shadow-lg z-40 border border-[var(--neon-primary)]/30"
         variants={floatButton}
         initial="rest"
         whileHover="hover"
         whileTap="tap"
-        onClick={() => playClick()}
-        aria-label="Quick actions"
+        aria-label="Potions &#x26; Provisions"
       >
         <motion.span
           className="text-lg"
           animate={{ rotate: 0 }}
-          whileHover={{ rotate: 90 }}
+          whileHover={{ rotate: -10 }}
           transition={{ type: "spring", stiffness: 300, damping: 15 }}
         >
-          +
+          🛒
         </motion.span>
-      </motion.button>
+      </motion.a>
 
       {/* === MOBILE NAVIGATION === */}
       <MobileNav />

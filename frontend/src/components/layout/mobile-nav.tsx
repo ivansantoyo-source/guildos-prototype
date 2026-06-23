@@ -8,9 +8,13 @@ import { demoHref } from "@/lib/utils/url";
 const BASE_TABS = [
   { href: "/dashboard", label: "Terminal", icon: "⚔️", id: "dashboard" },
   { href: "/inventory", label: "Loot", icon: "📦", id: "inventory" },
+  { href: "/pos", label: "POS", icon: "💳", id: "pos" },
   { href: "/bounty-board", label: "Quests", icon: "📜", id: "bounty-board" },
   { href: "/nexus", label: "Nexus", icon: "🏟️", id: "nexus" },
   { href: "/shopkeeper", label: "AI", icon: "🤖", id: "shopkeeper" },
+  { href: "/analytics", label: "Analytics", icon: "📊", id: "analytics" },
+  { href: "/profile", label: "Profile", icon: "👤", id: "profile" },
+  { href: "/settings", label: "Settings", icon: "⚙️", id: "settings" },
 ];
 
 function getTabs() {
@@ -27,14 +31,16 @@ export function MobileNav() {
   const tabs = getTabs();
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-sidebar/95 backdrop-blur-md border-t border-border safe-area-bottom">
-      <div className="flex items-center justify-around h-16">
+    <nav aria-label="Mobile navigation" className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-sidebar/95 backdrop-blur-md border-t border-border pb-[env(safe-area-inset-bottom)]">
+      <div className="flex items-center h-16 overflow-x-auto scrollbar-none snap-x snap-mandatory scroll-smooth px-2 gap-1 [&::-webkit-scrollbar]:hidden">
         {tabs.map((tab) => {
-          const isActive = pathname.startsWith(tab.href);
+          const tabPath = tab.href.split('?')[0];
+          const isActive = pathname === tabPath || pathname.startsWith(tabPath + '/');
           return (
             <Link
               key={tab.id}
               href={tab.href}
+              aria-current={isActive ? "page" : undefined}
               className={`flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 rounded-lg transition-all min-w-0 ${
                 isActive
                   ? "text-primary"
@@ -44,8 +50,10 @@ export function MobileNav() {
               <span className={`text-lg relative ${isActive ? "drop-shadow-[0_0_6px_var(--primary)]" : ""}`}>
                 {tab.icon}
                 {tab.id === "dashboard" && unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-2 w-4 h-4 bg-destructive text-[9px] text-white rounded-full flex items-center justify-center font-bold">
-                    {unreadCount}
+                  <span aria-live="polite" aria-atomic="true">
+                    <span className="absolute -top-1 -right-2 w-4 h-4 bg-destructive text-[9px] text-white rounded-full flex items-center justify-center font-bold">
+                      {unreadCount}
+                    </span>
                   </span>
                 )}
               </span>

@@ -6,6 +6,9 @@ import {
   useInventoryRealtime,
   useBountyRealtime,
   useFactionRealtime,
+  useBountyStatsRealtime,
+  useLfgRealtime,
+  useLfgParticipantsRealtime,
 } from "@/lib/hooks/useRealtime";
 import { useGuildStore } from "@/lib/store/useGuildStore";
 
@@ -38,6 +41,11 @@ function RealtimeSubscriber({ children }: { children: React.ReactNode }) {
   const updateBounty = useGuildStore((s) => s.updateBounty);
   const removeBounty = useGuildStore((s) => s.removeBounty);
   const setFactionStandings = useGuildStore((s) => s.setFactionStandings);
+  const setBountyStats = useGuildStore((s) => s.setBountyStats);
+  const addLfgLobby = useGuildStore((s) => s.addLfgLobby);
+  const updateLfgLobby = useGuildStore((s) => s.updateLfgLobby);
+  const addLfgParticipant = useGuildStore((s) => s.addLfgParticipant);
+  const removeLfgParticipant = useGuildStore((s) => s.removeLfgParticipant);
 
   // --- Activity Feed ---
   useActivityFeed(
@@ -112,6 +120,72 @@ function RealtimeSubscriber({ children }: { children: React.ReactNode }) {
         }
       },
       [setFactionStandings],
+    ),
+  );
+
+  // --- Bounty Stats (Leaderboard) ---
+  useBountyStatsRealtime(
+    useCallback(
+      (change: { eventType: string; payload: unknown }) => {
+        if (change.eventType === "INSERT" || change.eventType === "UPDATE") {
+          const record = change.payload as Record<string, unknown>;
+          const current = useGuildStore.getState().bountyStats;
+          const idx = current.findIndex((bs) => bs.id === record.id);
+          if (idx >= 0) {
+            const updated = [...current];
+            updated[idx] = { ...updated[idx], ...record } as never;
+            setBountyStats(updated);
+          } else {
+            setBountyStats([...current, record] as never);
+          }
+        }
+      },
+      [setBountyStats],
+    ),
+  );
+
+  // --- LFG Lobbies ---
+  useLfgRealtime(
+    useCallback(
+      (change: { eventType: string; payload: unknown }) => {
+        const record = change.payload as Record<string, unknown>;
+        const id = String(record.id ?? "");
+        switch (change.eventType) {
+          case "INSERT":
+            addLfgLobby(record as never);
+            break;
+          case "UPDATE":
+            updateLfgLobby(id, record as never);
+            break;
+          case "DELETE":
+            // Remove lobby by joining the store state — no dedicated remove action needed
+            // The store filters out deleted ones during sync
+            break;
+        }
+      },
+      [addLfgLobby, updateLfgLobby],
+    ),
+  );
+
+  // --- LFG Participants ---
+  // Subscribe to participant changes for each active lobby
+  // This is a simplified version — in production, subscribe per-lobby
+  useLfgParticipantsRealtime(
+    useGuildStore.getState().lfgLobbies[0]?.id ?? "",
+    useCallback(
+      (change: { eventType: string; payload: unknown }) => {
+        const record = change.payload as Record<string, unknown>;
+        const lobbyId = String(record.lobby_id ?? "");
+        switch (change.eventType) {
+          case "INSERT":
+            addLfgParticipant(lobbyId, record as never);
+            break;
+          case "DELETE":
+            removeLfgParticipant(lobbyId, String(record.profile_id ?? ""));
+            break;
+        }
+      },
+      [addLfgParticipant, removeLfgParticipant],
     ),
   );
 

@@ -2,6 +2,8 @@
 
 import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useGuildStore } from "@/lib/store/useGuildStore";
+import { toast } from "@/components/ui/toaster";
+import { useFocusTrap } from "@/lib/hooks/useFocusTrap";
 import type { InventoryItem, ItemCondition } from "@/lib/types";
 
 const PLATFORMS = ["ALL", "SNES", "NES", "N64", "GENESIS", "PS1", "PS2", "SATURN", "DREAMCAST", "GAMECUBE", "GBA"];
@@ -52,6 +54,8 @@ function ItemDetailSlideover({ item, onClose }: { item: InventoryItem; onClose: 
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  const focusTrapRef = useFocusTrap({ onEscape: onClose });
+
   const handleSave = () => {
     setSaving(true);
     setTimeout(() => {
@@ -79,7 +83,7 @@ function ItemDetailSlideover({ item, onClose }: { item: InventoryItem; onClose: 
   }, [item.id]);
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
+    <div ref={focusTrapRef} className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label={`Item details: ${item.item_name}`}>
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative w-full max-w-lg bg-card border-l border-border overflow-y-auto animate-in slide-in-from-right duration-300">
         <div className="p-6 space-y-6">
@@ -253,21 +257,46 @@ function ScanLootModal({ onClose }: { onClose: () => void }) {
     market_value: 0,
   });
   const dropRef = useRef<HTMLDivElement>(null);
+  const focusTrapRef = useFocusTrap({ onEscape: onClose });
+
+  // Pool of demo scan results to simulate varied AI image recognition
+  const SCAN_POOL = [
+    { item_name: "Chrono Trigger", platform: "SNES", minValue: 180, maxValue: 350 },
+    { item_name: "EarthBound", platform: "SNES", minValue: 200, maxValue: 500 },
+    { item_name: "Castlevania: Symphony of the Night", platform: "PS1", minValue: 80, maxValue: 200 },
+    { item_name: "Panzer Dragoon Saga", platform: "SATURN", minValue: 400, maxValue: 900 },
+    { item_name: "Fire Emblem: Path of Radiance", platform: "GAMECUBE", minValue: 150, maxValue: 350 },
+    { item_name: "Super Metroid", platform: "SNES", minValue: 60, maxValue: 150 },
+    { item_name: "The Legend of Zelda: Ocarina of Time", platform: "N64", minValue: 40, maxValue: 120 },
+    { item_name: "Silent Hill 2", platform: "PS2", minValue: 100, maxValue: 250 },
+    { item_name: "Mega Man X2", platform: "SNES", minValue: 90, maxValue: 200 },
+    { item_name: "Resident Evil 2", platform: "PS1", minValue: 50, maxValue: 130 },
+    { item_name: "Skies of Arcadia", platform: "DREAMCAST", minValue: 80, maxValue: 220 },
+    { item_name: "Pokemon Crystal", platform: "GBA", minValue: 60, maxValue: 160 },
+    { item_name: "Ninja Gaiden Black", platform: "XBOX", minValue: 40, maxValue: 100 },
+  ];
+
+  const CONDITIONS_POOL: ItemCondition[] = ["NEW", "CIB", "LOOSE", "LOOSE", "LOOSE"];
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
     setScanning(true);
+    // Randomize delay between 800ms and 2500ms
+    const delay = 800 + Math.random() * 1700;
     setTimeout(() => {
+      const pick = SCAN_POOL[Math.floor(Math.random() * SCAN_POOL.length)];
+      const spread = pick.maxValue - pick.minValue;
+      const value = parseFloat((pick.minValue + Math.random() * spread).toFixed(2));
       setAutoFill({
-        item_name: "Mega Man X2",
-        platform: "SNES",
-        condition: "LOOSE",
-        market_value: 120.00,
+        item_name: pick.item_name,
+        platform: pick.platform,
+        condition: CONDITIONS_POOL[Math.floor(Math.random() * CONDITIONS_POOL.length)],
+        market_value: value,
       });
       setScanned(true);
       setScanning(false);
-    }, 1500);
+    }, delay);
   };
 
   const handleAdd = () => {
@@ -293,7 +322,7 @@ function ScanLootModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div ref={focusTrapRef} className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-label="Scan Loot">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
       <div className="relative bg-card border border-border rounded-xl p-6 max-w-md w-full mx-4 animate-in zoom-in-95 duration-200">
         <div className="flex items-center justify-between mb-4">
@@ -320,6 +349,7 @@ function ScanLootModal({ onClose }: { onClose: () => void }) {
             <div className="space-y-2">
               <span className="text-4xl block">✅</span>
               <p className="text-xs text-xp font-bold">Image scanned successfully!</p>
+              <p className="text-[10px] text-muted-foreground/60 italic">🧪 Demo simulation — results are randomized</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -337,7 +367,7 @@ function ScanLootModal({ onClose }: { onClose: () => void }) {
         {/* Auto-fill Results */}
         {scanned && (
           <div className="mt-4 space-y-3 animate-in slide-in-from-top-2 duration-300">
-            <p className="text-[11px] text-primary font-bold">AI SUGGESTED DATA</p>
+            <p className="text-[11px] text-primary font-bold">AI SUGGESTED DATA <span className="text-[10px] text-muted-foreground font-normal italic">(demo simulation)</span></p>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-[10px] text-muted-foreground">Item Name</label>
@@ -400,21 +430,56 @@ function ScanLootModal({ onClose }: { onClose: () => void }) {
 function InlinePriceEditor({ item, onSave }: { item: InventoryItem; onSave: (price: number) => void }) {
   const [val, setVal] = useState(item.our_price?.toString() || "");
   const [editing, setEditing] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const commitSave = (price: number) => {
+    onSave(price);
+    setEditing(false);
+    toast("success", `Price updated`, `${item.item_name}: $${price.toFixed(2)}`);
+  };
+
+  const handleCancel = () => {
+    setVal(item.our_price?.toString() || "");
+    setEditing(false);
+  };
+
   return editing ? (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1" role="group" aria-label={`Edit price for ${item.item_name}`}>
       <input
+        ref={inputRef}
         type="number"
         step="0.01"
         value={val}
         onChange={(e) => setVal(e.target.value)}
-        onBlur={() => { onSave(parseFloat(val) || 0); setEditing(false); }}
-        onKeyDown={(e) => { if (e.key === "Enter") { onSave(parseFloat(val) || 0); setEditing(false); } }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { commitSave(parseFloat(val) || 0); }
+          if (e.key === "Escape") { handleCancel(); }
+        }}
         className="w-20 px-1 py-0.5 text-xs bg-background border border-border rounded text-right font-mono"
         autoFocus
+        aria-label={`New price for ${item.item_name}`}
       />
+      <button
+        onClick={() => commitSave(parseFloat(val) || 0)}
+        className="px-1.5 py-0.5 text-[10px] rounded bg-xp/20 text-xp border border-xp/30 hover:bg-xp/30 transition-colors"
+        aria-label={`Save price $${parseFloat(val) || 0}`}
+      >
+        Save
+      </button>
+      <button
+        onClick={handleCancel}
+        className="px-1.5 py-0.5 text-[10px] rounded bg-muted text-muted-foreground border border-border hover:text-foreground transition-colors"
+        aria-label="Cancel price edit"
+      >
+        Cancel
+      </button>
     </div>
   ) : (
-    <button onClick={() => setEditing(true)} className="hover:text-primary transition-colors">
+    <button
+      onClick={() => setEditing(true)}
+      className="hover:text-primary transition-colors"
+      aria-label={`Edit price for ${item.item_name}. Current price: ${item.our_price ? `$${item.our_price.toFixed(2)}` : "not set"}`}
+    >
       {item.our_price ? `$${item.our_price.toFixed(2)}` : "—"}
     </button>
   );
@@ -458,6 +523,18 @@ export default function InventoryPage() {
     inventory.forEach((i) => i.tags.forEach((t) => tags.add(t)));
     return Array.from(tags).sort();
   }, [inventory]);
+
+  // Determine whether any non-default filter is active (for Clear Filters button)
+  const hasActiveFilters = useMemo(() => {
+    return search !== ""
+      || platformFilter !== "ALL"
+      || conditionFilter !== "ALL"
+      || showLegendaryOnly
+      || showSpikeOnly
+      || priceRange[0] !== 0
+      || priceRange[1] !== 10000
+      || selectedTags.size > 0;
+  }, [search, platformFilter, conditionFilter, showLegendaryOnly, showSpikeOnly, priceRange, selectedTags]);
 
   // Filter + Sort + Paginate
   const filtered = useMemo(() => {
@@ -714,9 +791,30 @@ export default function InventoryPage() {
         </div>
       )}
 
+      {/* Clear Filters Button */}
+      {hasActiveFilters && (
+        <div className="flex justify-start">
+          <button
+            onClick={() => {
+              setSearch("");
+              setPlatformFilter("ALL");
+              setConditionFilter("ALL");
+              setShowLegendaryOnly(false);
+              setShowSpikeOnly(false);
+              setPriceRange([0, 10000]);
+              setSelectedTags(new Set());
+            }}
+            className="px-3 py-1.5 text-[11px] rounded border border-destructive/30 text-destructive hover:bg-destructive/10 transition-all"
+            aria-label="Clear all filters"
+          >
+            ✕ Clear All Filters
+          </button>
+        </div>
+      )}
+
       {/* Empty State */}
       {filtered.length === 0 && !showScrapYard && (
-        <div className="guild-card bg-card rounded-lg p-12 text-center border-border/20">
+        <div role="region" aria-label="No items in inventory" className="guild-card bg-card rounded-lg p-12 text-center border-border/20">
           <span className="text-5xl block mb-4">📭</span>
           <h2 className="text-lg font-bold text-primary mb-2">No Items in Inventory</h2>
           <p className="text-sm text-muted-foreground max-w-md mx-auto mb-6">
@@ -733,7 +831,7 @@ export default function InventoryPage() {
 
       {/* Scrap Yard Empty State */}
       {filtered.length === 0 && showScrapYard && (
-        <div className="guild-card bg-card rounded-lg p-12 text-center border-scrap/20">
+        <div role="region" aria-label="Scrap yard empty" className="guild-card bg-card rounded-lg p-12 text-center border-scrap/20">
           <span className="text-5xl block mb-4">⚙️</span>
           <h2 className="text-lg font-bold text-scrap mb-2">Scrap Yard Empty</h2>
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
@@ -843,6 +941,14 @@ export default function InventoryPage() {
                   <tr
                     key={item.id}
                     onClick={() => setDetailItem(item)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setDetailItem(item);
+                      }
+                    }}
+                    tabIndex={0}
+                    aria-label={`View details for ${item.item_name}`}
                     className={`border-b border-border/50 hover:bg-primary/[3%] transition-colors cursor-pointer ${rowClass(item)}`}
                   >
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>

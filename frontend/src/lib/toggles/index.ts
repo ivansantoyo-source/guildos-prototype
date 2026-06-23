@@ -33,9 +33,8 @@ export function isDemoMode(): boolean {
   }
 
   // 3. Env var sets the DEFAULT (not an override)
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === 'false') return false;
-
-  return true;
+  if (process.env.NEXT_PUBLIC_DEMO_MODE === 'true') return true;
+  return false;
 }
 
 /**

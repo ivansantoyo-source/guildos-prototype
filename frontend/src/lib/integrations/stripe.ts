@@ -65,6 +65,63 @@ function getPriceIds(): Record<string, string> {
 // ---------------------------------------------------------------------------
 
 /**
+ * Create a Stripe Checkout Session for a one-time payment (e.g. save room booking).
+ *
+ * @param amount       Amount in dollars (converted to cents by this function)
+ * @param description  Human-readable description shown in Stripe Checkout
+ * @param successUrl   Redirect URL on successful payment
+ * @param cancelUrl    Redirect URL on cancellation
+ * @param tenantConfig Optional tenant BYO key config
+ */
+export async function createPaymentCheckoutSession(
+  amount: number,
+  description: string,
+  successUrl?: string,
+  cancelUrl?: string,
+  tenantConfig?: TenantConfig | null
+): Promise<CheckoutSession> {
+  if (isDemoMode()) {
+    return mockCheckoutSession('payment');
+  }
+
+  try {
+    const secretKey = getSecretKey(tenantConfig);
+    if (!secretKey) {
+      return mockCheckoutSession('payment');
+    }
+
+    const stripe = getStripeClient(secretKey);
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      line_items: [
+        {
+          price_data: {
+            currency: 'usd',
+            product_data: { name: description },
+            unit_amount: Math.round(amount * 100), // dollars → cents
+          },
+          quantity: 1,
+        },
+      ],
+      success_url:
+        successUrl ??
+        `${process.env.NEXT_PUBLIC_APP_URL}/nexus?checkout=success`,
+      cancel_url:
+        cancelUrl ??
+        `${process.env.NEXT_PUBLIC_APP_URL}/nexus?checkout=cancelled`,
+    });
+
+    return {
+      url: session.url ?? '#',
+      sessionId: session.id,
+    };
+  } catch (error) {
+    console.error('[Stripe] Payment checkout error:', error);
+    return mockCheckoutSession('payment');
+  }
+}
+
+/**
  * Create a Stripe Checkout Session for subscribing to a GuildOS tier.
  *
  * @param tier          Subscription tier

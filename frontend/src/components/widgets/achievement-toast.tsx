@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
 
 // ============================================================================
@@ -131,7 +131,7 @@ function playAchievementSound(rarity: AchievementRarity) {
 // MAIN COMPONENT
 // ============================================================================
 
-export function AchievementToast() {
+export const AchievementToast = React.memo(() => {
   const [current, setCurrent] = useState<Achievement | null>(null);
   const [visible, setVisible] = useState(false);
   const [animatingOut, setAnimatingOut] = useState(false);
@@ -264,4 +264,4 @@ export function AchievementToast() {
       </div>
     </div>
   );
-}
+});

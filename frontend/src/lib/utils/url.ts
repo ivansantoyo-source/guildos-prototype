@@ -54,8 +54,8 @@ function checkDemoMode(): boolean {
     // Fall through to env var
   }
 
-  // 4. Env var default
-  return process.env.NEXT_PUBLIC_DEMO_MODE !== 'false';
+  // 4. Env var default — only demo when explicitly 'true'
+  return process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
 }
 
 /**
